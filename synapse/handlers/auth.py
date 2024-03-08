@@ -424,6 +424,10 @@ class AuthHandler:
         ):
             ui_auth_types.add(LoginType.SSO)
 
+        # If JWT is enabled, allow user to re-authenticate with one
+        if self.hs.config.jwt.jwt_enabled:
+            ui_auth_types.add(LoginType.JWT)
+
         return ui_auth_types
 
     def get_enabled_auth_types(self) -> Iterable[str]:
