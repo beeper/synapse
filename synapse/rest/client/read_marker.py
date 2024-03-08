@@ -108,6 +108,7 @@ class ReadMarkerRestServlet(RestServlet):
                     user_id=requester.user.to_string(),
                     event_id=event_id,
                     allow_backward=allow_backward,
+                    extra_content=body.get("com.beeper.fully_read.extra", None),
                 )
             else:
                 await self.receipts_handler.received_client_receipt(
@@ -117,6 +118,7 @@ class ReadMarkerRestServlet(RestServlet):
                     event_id=event_id,
                     # Setting the thread ID is not possible with the /read_markers endpoint.
                     thread_id=None,
+                    extra_content=body.get("com.beeper.read.extra", None),
                 )
 
         return 200, {}
