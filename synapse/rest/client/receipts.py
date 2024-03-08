@@ -57,6 +57,7 @@ class ReceiptRestServlet(RestServlet):
             ReceiptTypes.READ,
             ReceiptTypes.READ_PRIVATE,
             ReceiptTypes.FULLY_READ,
+            ReceiptTypes.BEEPER_INBOX_DONE,
         }
 
     async def on_POST(
@@ -73,7 +74,7 @@ class ReceiptRestServlet(RestServlet):
                 f"Receipt type must be {', '.join(self._known_receipt_types)}",
             )
 
-        body = parse_json_object_from_request(request)
+        body = parse_json_object_from_request(request, allow_empty_body=False)
 
         # Pull the thread ID, if one exists.
         thread_id = None
@@ -110,6 +111,7 @@ class ReceiptRestServlet(RestServlet):
                 room_id,
                 user_id=requester.user.to_string(),
                 event_id=event_id,
+                extra_content=body,
             )
         else:
             await self.receipts_handler.received_client_receipt(
@@ -118,6 +120,7 @@ class ReceiptRestServlet(RestServlet):
                 user_id=requester.user,
                 event_id=event_id,
                 thread_id=thread_id,
+                extra_content=body,
             )
 
         return 200, {}
