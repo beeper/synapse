@@ -141,6 +141,7 @@ class SyncConfig:
     filter_collection: FilterCollection
     is_guest: bool
     device_id: Optional[str]
+    beeper_previews: bool = False
 
 
 @attr.s(slots=True, frozen=True, auto_attribs=True)
@@ -175,6 +176,7 @@ class JoinedSyncResult:
     unread_thread_notifications: JsonDict
     summary: Optional[JsonDict]
     unread_count: int
+    preview: Optional[JsonDict]
 
     def __bool__(self) -> bool:
         """Make the result appear empty if there are no updates. This is used
@@ -185,6 +187,7 @@ class JoinedSyncResult:
             or self.state
             or self.ephemeral
             or self.account_data
+            or self.preview
             # nb the notification count does not, er, count: if there's nothing
             # else in the result, we don't need to send it.
         )
@@ -2859,6 +2862,8 @@ class SyncHandler:
                 }
             )
 
+            user_id = sync_result_builder.sync_config.user.to_string()
+
             # Note: `batch` can be both empty and limited here in the case where
             # `_load_filtered_recents` can't find any events the user should see
             # (e.g. due to having ignored the sender of the last 50 events).
@@ -2868,7 +2873,6 @@ class SyncHandler:
             # newly joined room, unless either a) they've joined before or b) the
             # tag was added by synapse e.g. for server notice rooms.
             if full_state:
-                user_id = sync_result_builder.sync_config.user.to_string()
                 tags = await self.store.get_tags_for_room(user_id, room_id)
 
                 # If there aren't any tags, don't send the empty tags list down
@@ -2958,7 +2962,38 @@ class SyncHandler:
                     unread_thread_notifications={},
                     summary=summary,
                     unread_count=0,
+                    preview=None,
                 )
+
+                # Only generate previews if we have new events that would change it
+                if batch.events and sync_config.beeper_previews:
+                    preview = (
+                        await self.store.beeper_preview_event_for_room_id_and_user_id(
+                            room_id=room_id, user_id=user_id, to_key=now_token.room_key
+                        )
+                    )
+
+                    if preview:
+                        preview_event_id, preview_origin_server_ts = preview
+                        room_sync.preview = {
+                            "event_id": preview_event_id,
+                            "origin_server_ts": preview_origin_server_ts,
+                        }
+
+                        # Check if we already have the event in the batch, in which
+                        # case we needn't add it here. No point in checking state as
+                        # we don't preview state events.
+                        for ev in batch.events:
+                            if ev.event_id == preview_event_id:
+                                break
+                        else:
+                            room_sync.preview["event"] = await self.store.get_event(
+                                preview_event_id,
+                                allow_none=True,
+                            )
+                    else:
+                        # This should never happen!
+                        logger.warning("Beeper preview is missing! roomID=%s", room_id)
 
                 if room_sync or always_include:
                     notifs = await self.unread_notifs_for_room_id(room_id, sync_config)

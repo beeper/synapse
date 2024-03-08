@@ -42,7 +42,6 @@ from typing import (
 
 import attr
 from prometheus_client import Histogram
-from typing_extensions import TypedDict
 
 import synapse.events.snapshot
 from synapse.api.constants import (
