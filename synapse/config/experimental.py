@@ -419,3 +419,8 @@ class ExperimentalConfig(Config):
         self.msc4028_push_encrypted_events = experimental.get(
             "msc4028_push_encrypted_events", False
         )
+
+        self.beeper_user_notification_counts_enabled = experimental.get(
+            "beeper_user_notification_counts_enabled",
+            False,
+        )
