@@ -26,7 +26,7 @@ from twisted.internet.testing import MemoryReactor
 from synapse.api.constants import EventContentFields, EventTypes, Membership, RoomTypes
 from synapse.config.server import DEFAULT_ROOM_VERSION
 from synapse.rest import admin
-from synapse.rest.client import login, room, room_upgrade_rest_servlet
+from synapse.rest.client import login, notifications, room, room_upgrade_rest_servlet
 from synapse.server import HomeServer
 from synapse.util.clock import Clock
 
@@ -40,6 +40,7 @@ class UpgradeRoomTest(unittest.HomeserverTestCase):
         login.register_servlets,
         room.register_servlets,
         room_upgrade_rest_servlet.register_servlets,
+        notifications.register_servlets,
     ]
 
     def prepare(self, reactor: MemoryReactor, clock: Clock, hs: HomeServer) -> None:
@@ -432,3 +433,37 @@ class UpgradeRoomTest(unittest.HomeserverTestCase):
                 tok=self.creator_token,
             )
             self.assertEqual(content[EventContentFields.MEMBERSHIP], Membership.BAN)
+
+    def test_upgrade_clears_push_actions(self) -> None:
+        """
+        Beeper specific test: ensure that when upgrading a room any notification/unread counts
+        in the old room are removed.
+        """
+        self.helper.send_event(
+            self.room_id,
+            "m.room.message",
+            content={"body": "hi", "msgtype": "text"},
+            tok=self.other_token,
+        )
+
+        # Check we have a notification pre-upgrade
+        channel = self.make_request(
+            "GET",
+            "/notifications",
+            access_token=self.creator_token,
+        )
+        self.assertEqual(channel.code, 200, channel.result)
+        self.assertEqual(len(channel.json_body["notifications"]), 1, channel.json_body)
+
+        channel = self._upgrade_room()
+        self.assertEqual(200, channel.code, channel.result)
+        self.assertIn("replacement_room", channel.json_body)
+
+        # Check we have no notification pre-upgrade
+        channel = self.make_request(
+            "GET",
+            "/notifications",
+            access_token=self.creator_token,
+        )
+        self.assertEqual(channel.code, 200, channel.result)
+        self.assertEqual(len(channel.json_body["notifications"]), 0, channel.json_body)
