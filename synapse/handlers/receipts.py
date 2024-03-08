@@ -181,6 +181,7 @@ class ReceiptsHandler:
         user_id: UserID,
         event_id: str,
         thread_id: Optional[str],
+        extra_content: Optional[JsonDict] = None,
     ) -> None:
         """Called when a client tells us a local user has read up to the given
         event_id in the room.
@@ -197,7 +198,7 @@ class ReceiptsHandler:
             user_id=user_id.to_string(),
             event_ids=[event_id],
             thread_id=thread_id,
-            data={"ts": int(self.clock.time_msec())},
+            data={"ts": int(self.clock.time_msec()), **(extra_content or {})},
         )
 
         is_new = await self._handle_new_receipts([receipt])
