@@ -507,6 +507,11 @@ def serialize_event(
             ):
                 d["unsigned"]["transaction_id"] = txn_id
 
+    # Beeper: include internal stream ordering as HS order unsigned hint
+    stream_ordering = getattr(e.internal_metadata, "stream_ordering", None)
+    if stream_ordering:
+        d["unsigned"]["com.beeper.hs.order"] = stream_ordering
+
     # invite_room_state and knock_room_state are a list of stripped room state events
     # that are meant to provide metadata about a room to an invitee/knocker. They are
     # intended to only be included in specific circumstances, such as down sync, and
