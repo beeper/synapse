@@ -19,6 +19,7 @@
 #
 
 import logging
+import re
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -57,6 +58,10 @@ if TYPE_CHECKING:
     from synapse.server import HomeServer
 
 logger = logging.getLogger(__name__)
+
+# Regex pattern for detecting a bridge bot (cached here for performance)
+SYNAPSE_BOT_PATTERN = re.compile(r"^@_.*_bot\:*")
+HUNGRYSERV_BOT_PATTERN = re.compile(r"^@[a-z]+bot\:beeper.local")
 
 
 class AccountDataWorkerStore(PushRulesWorkerStore, CacheInvalidationWorkerStore):
@@ -699,6 +704,18 @@ class AccountDataWorkerStore(PushRulesWorkerStore, CacheInvalidationWorkerStore)
         content: JsonDict,
     ) -> None:
         content_json = json_encoder.encode(content)
+
+        # If we're ignoring users, silently filter out any bots that may be ignored
+        if account_data_type == AccountDataTypes.IGNORED_USER_LIST:
+            ignored_users = content.get("ignored_users", {})
+            if isinstance(ignored_users, dict):
+                content["ignored_users"] = {
+                    u: v
+                    for u, v in ignored_users.items()
+                    if not (
+                        SYNAPSE_BOT_PATTERN.match(u) or HUNGRYSERV_BOT_PATTERN.match(u)
+                    )
+                }
 
         self.db_pool.simple_upsert_txn(
             txn,
