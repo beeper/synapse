@@ -49,6 +49,9 @@ class WellKnownBuilder:
             result["m.identity_server"] = {
                 "base_url": self._config.registration.default_identity_server
             }
+        else:
+            # Workaround for iOS expecting some value here
+            result["m.identity_server"] = {"base_url": ""}
 
         # We use the MSC3861 values as they are used by multiple MSCs
         if self._config.experimental.msc3861.enabled:
