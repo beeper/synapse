@@ -26,7 +26,7 @@ from synapse.api.constants import ReceiptTypes
 from synapse.http.server import HttpServer
 from synapse.http.servlet import RestServlet, parse_json_object_from_request
 from synapse.http.site import SynapseRequest
-from synapse.types import JsonDict
+from synapse.types import JsonDict, Requester
 
 from ._base import client_patterns
 
@@ -55,15 +55,22 @@ class ReadMarkerRestServlet(RestServlet):
         }
 
     async def on_POST(
-        self, request: SynapseRequest, room_id: str
+        self,
+        request: SynapseRequest,
+        room_id: str,
     ) -> Tuple[int, JsonDict]:
         requester = await self.auth.get_user_by_req(request)
+        body = parse_json_object_from_request(request)
+        return await self.handle_read_marker(room_id, body, requester)
 
+    # Beeper: The endpoint and underlying method are separated here so `inbox_state`
+    # can use the same function.
+    async def handle_read_marker(
+        self, room_id: str, body: dict, requester: Requester
+    ) -> Tuple[int, JsonDict]:
         await self.presence_handler.bump_presence_active_time(
             requester.user, requester.device_id
         )
-
-        body = parse_json_object_from_request(request)
 
         unrecognized_types = set(body.keys()) - self._known_receipt_types
         if unrecognized_types:
