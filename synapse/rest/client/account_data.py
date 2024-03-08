@@ -19,6 +19,7 @@
 #
 #
 
+import json
 import logging
 from typing import TYPE_CHECKING, Optional, Tuple
 
@@ -27,6 +28,7 @@ from synapse.api.errors import AuthError, Codes, NotFoundError, SynapseError
 from synapse.http.server import HttpServer
 from synapse.http.servlet import RestServlet, parse_json_object_from_request
 from synapse.http.site import SynapseRequest
+from synapse.rest.client.read_marker import ReadMarkerRestServlet
 from synapse.types import JsonDict, JsonMapping, RoomID
 
 from ._base import client_patterns
@@ -310,9 +312,109 @@ class UnstableRoomAccountDataServlet(RestServlet):
         return 200, {}
 
 
+class RoomBeeperInboxStateServlet(RestServlet):
+    """
+    PUT /user/{user_id}/rooms/{room_id}/beeper_inbox_state HTTP/1.1
+    """
+
+    PATTERNS = list(
+        client_patterns(
+            "/com.beeper.inbox/user/(?P<user_id>[^/]*)/rooms/(?P<room_id>[^/]*)/inbox_state",
+            releases=(),  # not in the matrix spec, only include under /unstable
+        )
+    )
+
+    def __init__(self, hs: "HomeServer"):
+        super().__init__()
+        self.auth = hs.get_auth()
+        self.clock = hs.get_clock()
+        self.store = hs.get_datastores().main
+        self.handler = hs.get_account_data_handler()
+        self.read_marker_client = ReadMarkerRestServlet(hs)
+
+    async def on_PUT(
+        self, request: SynapseRequest, user_id: str, room_id: str
+    ) -> Tuple[int, JsonDict]:
+        requester = await self.auth.get_user_by_req(request)
+        if user_id != requester.user.to_string():
+            raise AuthError(403, "Cannot add beeper inbox state for other users.")
+
+        if not RoomID.is_valid(room_id):
+            raise SynapseError(
+                400,
+                f"{room_id} is not a valid room ID",
+                Codes.INVALID_PARAM,
+            )
+
+        ts = self.clock.time_msec()
+
+        body = parse_json_object_from_request(request)
+
+        if "done" in body:
+            delta_ms = body["done"].get("at_delta") or 0
+            done = {"updated_ts": ts, "at_ts": ts + delta_ms}
+            await self.handler.add_account_data_to_room(
+                user_id, room_id, "com.beeper.inbox.done", done
+            )
+            logger.info(f"SetBeeperDone done_delta_ms={delta_ms}")
+
+        if "marked_unread" in body:
+            marked_unread = {"unread": body["marked_unread"], "ts": ts}
+            await self.handler.add_account_data_to_room(
+                user_id, room_id, "m.marked_unread", marked_unread
+            )
+            logger.info(f"SetBeeperMarkedUnread marked_unread={body['marked_unread']}")
+
+        if "read_markers" in body:
+            await self.read_marker_client.handle_read_marker(
+                room_id, body["read_markers"], requester
+            )
+            logger.info(
+                f"SetBeeperReadMarkers read_markers={json.dumps(body['read_markers'])}"
+            )
+
+        return 200, {}
+
+
+class BeeperInboxBatchArchiveServlet(RestServlet):
+    """
+    PUT /com.beeper.inbox/batch_archive HTTP/1.1
+    """
+
+    PATTERNS = list(
+        client_patterns(
+            "/com.beeper.inbox/batch_archive",
+            releases=(),  # not in the matrix spec, only include under /unstable
+        )
+    )
+
+    def __init__(self, hs: "HomeServer"):
+        super().__init__()
+        self.auth = hs.get_auth()
+        self.clock = hs.get_clock()
+        self.store = hs.get_datastores().main
+        self.handler = hs.get_account_data_handler()
+
+    async def on_POST(self, request: SynapseRequest) -> Tuple[int, JsonDict]:
+        requester = await self.auth.get_user_by_req(request)
+        ts = self.clock.time_msec()
+        body = parse_json_object_from_request(request)
+
+        done = {"updated_ts": ts, "at_ts": ts}
+        for room_id in body["room_ids"]:
+            # TODO in transaction
+            await self.handler.add_account_data_to_room(
+                requester.user.to_string(), room_id, "com.beeper.inbox.done", done
+            )
+
+        return 200, {}
+
+
 def register_servlets(hs: "HomeServer", http_server: HttpServer) -> None:
     AccountDataServlet(hs).register(http_server)
     RoomAccountDataServlet(hs).register(http_server)
+    RoomBeeperInboxStateServlet(hs).register(http_server)
+    BeeperInboxBatchArchiveServlet(hs).register(http_server)
 
     if hs.config.experimental.msc3391_enabled:
         UnstableAccountDataServlet(hs).register(http_server)
