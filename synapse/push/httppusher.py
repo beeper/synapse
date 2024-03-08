@@ -132,6 +132,8 @@ class HttpPusher(Pusher):
             pusher_config.app_id,
             pusher_config.pushkey,
         )
+        # Beeper: Save this so we can pass this on to Sygnal as well
+        self.user_name = pusher_config.user_name
 
         # Validate that there's a URL and it is of the proper form.
         if "url" not in self.data:
@@ -445,7 +447,7 @@ class HttpPusher(Pusher):
             rejected push keys otherwise. If this array is empty, the push fully
             succeeded.
         """
-        priority = "low"
+        priority = "high"  # Beep: always use high priority
         if (
             event.type == EventTypes.Encrypted
             or tweaks.get("highlight")
@@ -461,7 +463,11 @@ class HttpPusher(Pusher):
             content: JsonDict = {
                 "event_id": event.event_id,
                 "room_id": event.room_id,
-                "counts": {"unread": badge},
+                "counts": {
+                    "unread": badge,
+                    "com.beeper.server_type": "synapse",
+                },
+                "com.beeper.user_id": self.user_id,
                 "prio": priority,
             }
             # event_id_only doesn't include the tweaks, so override them.
@@ -480,8 +486,10 @@ class HttpPusher(Pusher):
                 "prio": priority,
                 "counts": {
                     "unread": badge,
+                    "com.beeper.server_type": "synapse",
                     # 'missed_calls': 2
                 },
+                "com.beeper.user_id": self.user_id,
             }
             if event.type == "m.room.member" and event.is_state():
                 content["membership"] = event.content["membership"]
@@ -515,7 +523,11 @@ class HttpPusher(Pusher):
                 "id": "",
                 "type": None,
                 "sender": "",
-                "counts": {"unread": badge},
+                "counts": {
+                    "unread": badge,
+                    "com.beeper.server_type": "synapse",
+                },
+                "com.beeper.user_id": self.user_id,
                 "devices": [
                     {
                         "app_id": self.app_id,
