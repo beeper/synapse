@@ -292,7 +292,7 @@ class EventsWorkerStoreTestCase(BaseWorkerStoreTestCase):
             self.master_store.add_push_actions_to_staging(
                 event.event_id,
                 dict(push_actions),
-                False,
+                {user_id: False for user_id, _ in push_actions},
                 "main",
             )
         )
