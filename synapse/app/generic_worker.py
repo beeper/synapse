@@ -161,6 +161,7 @@ class GenericWorkerStore(
     TaskSchedulerWorkerStore,
     ExperimentalFeaturesStore,
     SlidingSyncStore,
+    BeeperStore,
 ):
     # Properties that multiple storage classes define. Tell mypy what the
     # expected type is.

@@ -158,6 +158,7 @@ class DataStore(
     SessionStore,
     TaskSchedulerWorkerStore,
     SlidingSyncStore,
+    BeeperStore,
 ):
     def __init__(
         self,
