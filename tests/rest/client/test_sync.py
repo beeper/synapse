@@ -18,7 +18,7 @@
 #
 #
 import json
-from typing import List
+from typing import List, Optional
 
 from parameterized import parameterized
 
@@ -482,6 +482,9 @@ class UnreadMessagesTestCase(unittest.HomeserverTestCase):
         # Check that the unread counter is back to 0.
         self._check_unread_count(0)
 
+        # Beeper: we don't count name as unread, so send this to increase the counter
+        self.helper.send_event(self.room_id, EventTypes.Encrypted, {}, tok=self.tok2)
+
         # Check that room name changes increase the unread counter.
         self.helper.send_state(
             self.room_id,
@@ -490,6 +493,9 @@ class UnreadMessagesTestCase(unittest.HomeserverTestCase):
             tok=self.tok2,
         )
         self._check_unread_count(1)
+
+        # Beeper: we don't count topic as unread, so send this to increase the counter
+        self.helper.send_event(self.room_id, EventTypes.Encrypted, {}, tok=self.tok2)
 
         # Check that room topic changes increase the unread counter.
         self.helper.send_state(
@@ -503,6 +509,10 @@ class UnreadMessagesTestCase(unittest.HomeserverTestCase):
         # Check that encrypted messages increase the unread counter.
         self.helper.send_event(self.room_id, EventTypes.Encrypted, {}, tok=self.tok2)
         self._check_unread_count(3)
+
+        # Beeper: fake event to bump event count, we don't count custom events
+        # as unread currently.
+        self.helper.send_event(self.room_id, EventTypes.Encrypted, {}, tok=self.tok2)
 
         # Check that custom events with a body increase the unread counter.
         result = self.helper.send_event(
@@ -537,7 +547,7 @@ class UnreadMessagesTestCase(unittest.HomeserverTestCase):
             content={"body": "hello", "msgtype": "m.notice"},
             tok=self.tok2,
         )
-        self._check_unread_count(4)
+        self._check_unread_count(5)  # Beep: notices count as unread
 
         # Check that tombstone events changes increase the unread counter.
         res1 = self.helper.send_state(
