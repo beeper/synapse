@@ -10,7 +10,7 @@ jobs:
   lint-style:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v2
       - run: pip install poetry
       - run: poetry install
@@ -20,7 +20,7 @@ jobs:
   lint-types:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v2
       - run: pip install poetry
       - run: poetry install --extras all
@@ -31,7 +31,7 @@ jobs:
   test-trial:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v2
       - run: pip install poetry
       - run: poetry install --extras all
@@ -50,7 +50,7 @@ jobs:
         MULTI_POSTGRES: 1
         WOKRERS: 1
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Run SyTest
         run: /bootstrap.sh synapse
         working-directory: /src
@@ -69,8 +69,8 @@ jobs:
   test-complement:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           repository: matrix-org/complement
           path: complement
@@ -92,7 +92,7 @@ jobs:
     env:
       DOCKER_BUILDKIT: 1
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v2
       - uses: docker/setup-buildx-action@v2
         with:
