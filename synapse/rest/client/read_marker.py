@@ -27,7 +27,7 @@ from synapse.api.errors import Codes, SynapseError
 from synapse.http.server import HttpServer
 from synapse.http.servlet import RestServlet, parse_json_object_from_request
 from synapse.http.site import SynapseRequest
-from synapse.types import JsonDict
+from synapse.types import JsonDict, Requester
 
 from ._base import client_patterns
 
@@ -59,12 +59,17 @@ class ReadMarkerRestServlet(RestServlet):
         self, request: SynapseRequest, room_id: str
     ) -> tuple[int, JsonDict]:
         requester = await self.auth.get_user_by_req(request)
+        body = parse_json_object_from_request(request)
+        return await self.handle_read_marker(room_id, body, requester)
 
+    # Beeper: The endpoint and underlying method are separated here so `inbox_state`
+    # can use the same function.
+    async def handle_read_marker(
+        self, room_id: str, body: JsonDict, requester: Requester
+    ) -> tuple[int, JsonDict]:
         await self.presence_handler.bump_presence_active_time(
             requester.user, requester.device_id
         )
-
-        body = parse_json_object_from_request(request)
 
         unrecognized_types = set(body.keys()) - self._known_receipt_types
 
