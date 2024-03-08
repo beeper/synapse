@@ -467,6 +467,14 @@ fn serialize_event_value(
         }
     }
 
+    // Beeper: include the internal stream ordering as an HS order unsigned hint.
+    if let Some(stream_ordering) = event.internal_metadata.get_stream_ordering()? {
+        unsigned_mut(&mut d)?.insert(
+            unsigned_field::BEEPER_HS_ORDER.to_owned(),
+            Value::Number(Number::from(stream_ordering.get())),
+        );
+    }
+
     // Strip invite/knock room state unless requested.
     if !config.include_stripped_room_state {
         let unsigned = unsigned_mut(&mut d)?;
