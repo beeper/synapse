@@ -802,6 +802,14 @@ class SerializeEventTestCase(HomeserverTestCase):
             ).include_admin_metadata
         )
 
+    def test_stream_ordering_is_included(self) -> None:
+        event = make_test_event({"unsigned": {"com.beeper.hs.order": 999}})
+        event.internal_metadata.stream_ordering = 1234
+
+        serialized = self.serialize(event, fields=None)
+
+        self.assertEqual(serialized["unsigned"]["com.beeper.hs.order"], 1234)
+
     def test_event_flagged_for_admins(self) -> None:
         # Default behaviour should be *not* to include it
         self.assertEqual(
