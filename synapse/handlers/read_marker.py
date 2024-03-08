@@ -20,10 +20,11 @@
 #
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from synapse.api.constants import ReceiptTypes
 from synapse.api.errors import SynapseError
+from synapse.types import JsonDict
 from synapse.util.async_helpers import Linearizer
 
 if TYPE_CHECKING:
@@ -39,7 +40,11 @@ class ReadMarkerHandler:
         self.read_marker_linearizer = Linearizer(name="read_marker")
 
     async def received_client_read_marker(
-        self, room_id: str, user_id: str, event_id: str
+        self,
+        room_id: str,
+        user_id: str,
+        event_id: str,
+        extra_content: Optional[JsonDict] = None,
     ) -> None:
         """Updates the read marker for a given user in a given room if the event ID given
         is ahead in the stream relative to the current read marker.
@@ -71,7 +76,7 @@ class ReadMarkerHandler:
                     should_update = event_ordering > old_event_ordering
 
             if should_update:
-                content = {"event_id": event_id}
+                content = content = {"event_id": event_id, **(extra_content or {})}
                 await self.account_data_handler.add_account_data_to_room(
                     user_id, room_id, ReceiptTypes.FULLY_READ, content
                 )
