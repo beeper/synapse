@@ -70,6 +70,7 @@ class NotificationsServlet(RestServlet):
             [
                 ReceiptTypes.READ,
                 ReceiptTypes.READ_PRIVATE,
+                ReceiptTypes.BEEPER_INBOX_DONE,
             ],
         )
 
