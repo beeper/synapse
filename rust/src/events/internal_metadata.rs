@@ -637,7 +637,7 @@ impl EventInternalMetadata {
     }
 
     #[getter]
-    fn get_stream_ordering(&self) -> PyResult<Option<NonZeroI64>> {
+    pub fn get_stream_ordering(&self) -> PyResult<Option<NonZeroI64>> {
         Ok(self.read_inner()?.stream_ordering)
     }
     #[setter]

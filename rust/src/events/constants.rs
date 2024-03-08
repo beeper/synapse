@@ -80,6 +80,8 @@ pub mod unsigned_field {
     pub const TRANSACTION_ID: &str = "transaction_id";
     /// Unsigned field: org.matrix.msc4140.delay_id
     pub const DELAY_ID: &str = "org.matrix.msc4140.delay_id";
+    /// Unsigned field: Beeper homeserver stream ordering
+    pub const BEEPER_HS_ORDER: &str = "com.beeper.hs.order";
     /// Unsigned field: membership (MSC4115)
     pub const MEMBERSHIP: &str = "membership";
     /// Unsigned field: msc4354_sticky_duration_ttl_ms (MSC4354)
