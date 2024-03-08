@@ -134,6 +134,10 @@ COPY --from=requirements /synapse/requirements.txt /synapse/
 RUN --mount=type=cache,target=/root/.cache/pip \
   pip install --prefix="/install" --no-deps --no-warn-script-location -r /synapse/requirements.txt
 
+# Beeper: install shared secret authenticator
+RUN pip install --prefix="/install" --no-deps --no-warn-script-location \
+   'git+https://github.com/devture/matrix-synapse-shared-secret-auth@e178353ec87c56e0169dd04466d4769da5ed9c46#egg=shared_secret_authenticator'
+
 # Copy over the rest of the synapse source code.
 COPY synapse /synapse/synapse/
 COPY rust /synapse/rust/
