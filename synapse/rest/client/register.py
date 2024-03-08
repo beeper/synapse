@@ -367,10 +367,8 @@ class UsernameAvailabilityRestServlet(RestServlet):
         )
 
     async def on_GET(self, request: Request) -> tuple[int, JsonDict]:
-        if not self.hs.config.registration.enable_registration:
-            raise SynapseError(
-                403, "Registration has been disabled", errcode=Codes.FORBIDDEN
-            )
+        # Beeper: allow availability checks even when public registration is
+        # disabled.
 
         if self.inhibit_user_in_use_error:
             return 200, {"available": True}
