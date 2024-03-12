@@ -430,3 +430,8 @@ class ExperimentalConfig(Config):
         self.msc4069_profile_inhibit_propagation = experimental.get(
             "msc4069_profile_inhibit_propagation", False
         )
+
+        self.beeper_user_notification_counts_enabled = experimental.get(
+            "beeper_user_notification_counts_enabled",
+            False,
+        )
