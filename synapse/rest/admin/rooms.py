@@ -19,10 +19,12 @@
 #
 #
 import logging
+import time
 from http import HTTPStatus
 from typing import TYPE_CHECKING, List, Optional, Tuple, cast
 
 import attr
+from prometheus_client import Histogram
 
 from synapse.api.constants import Direction, EventTypes, JoinRules, Membership
 from synapse.api.errors import AuthError, Codes, NotFoundError, SynapseError
@@ -60,6 +62,11 @@ if TYPE_CHECKING:
     from synapse.server import HomeServer
 
 logger = logging.getLogger(__name__)
+
+delete_time = Histogram(
+    "admin_room_delete_time",
+    "Time taken to delete rooms via the admin API (sec)",
+)
 
 
 class RoomRestV2Servlet(RestServlet):
@@ -336,13 +343,19 @@ class RoomRestServlet(RestServlet):
     async def on_DELETE(
         self, request: SynapseRequest, room_id: str
     ) -> Tuple[int, JsonDict]:
-        return await self._delete_room(
+        logger.info(f"[admin/rooms] deleting {room_id}")
+        start = time.time()
+        response = await self._delete_room(
             request,
             room_id,
             self.auth,
             self.room_shutdown_handler,
             self.pagination_handler,
         )
+        end = time.time()
+        logger.info(f"[admin/rooms] deleting {room_id} took {end - start} seconds")
+        delete_time.observe(end - start)
+        return response
 
     async def _delete_room(
         self,
