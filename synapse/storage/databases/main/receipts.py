@@ -778,6 +778,11 @@ class ReceiptsWorkerStore(SQLBaseStore):
             where_clause=where_clause,
         )
 
+        if self.hs.is_mine_id(user_id):
+            self.beeper_clear_notification_counts_txn(  # type: ignore[attr-defined]
+                txn, user_id, room_id, stream_ordering
+            )
+
         return rx_ts
 
     def _graph_to_linear(
