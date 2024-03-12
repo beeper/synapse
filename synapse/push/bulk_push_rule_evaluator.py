@@ -86,17 +86,15 @@ STATE_EVENT_TYPES_TO_MARK_UNREAD = {
 SENTINEL = object()
 
 
-def _should_count_as_unread(event: EventBase, context: EventContext) -> bool:
+def _should_count_as_unread(
+    event: EventBase,
+    context: EventContext,
+    non_bot_room_members_count: int,
+    current_user: str,
+    related_events: Dict[str, Dict[str, Any]],
+) -> bool:
     # Exclude rejected and soft-failed events.
     if context.rejected or event.internal_metadata.is_soft_failed():
-        return False
-
-    # Exclude notices.
-    if (
-        not event.is_state()
-        and event.type == EventTypes.Message
-        and event.content.get("msgtype") == "m.notice"
-    ):
         return False
 
     # Exclude edits.
@@ -104,18 +102,20 @@ def _should_count_as_unread(event: EventBase, context: EventContext) -> bool:
     if relates_to and relates_to.rel_type == RelationTypes.REPLACE:
         return False
 
-    # Mark events that have a non-empty string body as unread.
-    body = event.content.get("body")
-    if isinstance(body, str) and body:
-        return True
-
-    # Mark some state events as unread.
-    if event.is_state() and event.type in STATE_EVENT_TYPES_TO_MARK_UNREAD:
-        return True
-
-    # Mark encrypted events as unread.
-    if not event.is_state() and event.type == EventTypes.Encrypted:
-        return True
+    # Mark encrypted and plain text messages events as unread.
+    if not event.is_state():
+        if event.type == EventTypes.Encrypted:
+            return True
+        elif event.type == EventTypes.Message:
+            body = event.content.get("body")
+            return isinstance(body, str) and bool(body)
+        # Beeper: We want reactions to only count as unread if they're reactions to the current user in rooms that
+        # have fewer than 20 users.
+        elif event.type == "m.reaction" and related_events.get("m.annotation"):
+            return (
+                related_events["m.annotation"]["sender"] == current_user
+                and non_bot_room_members_count < 20
+            )
 
     return False
 
@@ -345,15 +345,9 @@ class BulkPushRuleEvaluator:
             # (historical messages persisted in reverse-chronological order).
             return
 
-        # Disable counting as unread unless the experimental configuration is
-        # enabled, as it can cause additional (unwanted) rows to be added to the
-        # event_push_actions table.
-        count_as_unread = False
-        if self.hs.config.experimental.msc2654_enabled:
-            count_as_unread = _should_count_as_unread(event, context)
-
         rules_by_user = await self._get_rules_for_event(event)
         actions_by_user: Dict[str, Collection[Union[Mapping, str]]] = {}
+        count_as_unread_by_user: Dict[str, bool] = {}
 
         # Gather a bunch of info in parallel.
         #
@@ -454,12 +448,19 @@ class BulkPushRuleEvaluator:
                     if not isinstance(display_name, str):
                         display_name = None
 
-            if count_as_unread:
-                # Add an element for the current user if the event needs to be marked as
-                # unread, so that add_push_actions_to_staging iterates over it.
-                # If the event shouldn't be marked as unread but should notify the
-                # current user, it'll be added to the dict later.
-                actions_by_user[uid] = []
+            # Beeper: Need to calculate this per user as whether it should count as unread or not
+            # depends on who the current user is.
+            if self.hs.config.experimental.msc2654_enabled:
+                count_as_unread_by_user[uid] = _should_count_as_unread(
+                    event, context, room_member_count, uid, related_events
+                )
+
+                if count_as_unread_by_user[uid]:
+                    # Add an element for the current user if the event needs to be marked as
+                    # unread, so that add_push_actions_to_staging iterates over it.
+                    # If the event shouldn't be marked as unread but should notify the
+                    # current user, it'll be added to the dict later.
+                    actions_by_user[uid] = []
 
             actions = evaluator.run(rules, uid, display_name)
             if "notify" in actions:
@@ -492,7 +493,7 @@ class BulkPushRuleEvaluator:
         await self.store.add_push_actions_to_staging(
             event.event_id,
             actions_by_user,
-            count_as_unread,
+            count_as_unread_by_user,
             thread_id,
         )
 
