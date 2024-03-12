@@ -19,6 +19,7 @@
 #
 
 import logging
+from os import environ
 from typing import TYPE_CHECKING, Dict, List, Mapping, Optional, Tuple, Union, cast
 
 import attr
@@ -47,6 +48,8 @@ logger = logging.getLogger(__name__)
 # times give more inserts into the database even for readonly API hits
 # 120 seconds == 2 minutes
 LAST_SEEN_GRANULARITY = 120 * 1000
+
+DISABLE_CLIENT_IP_STORAGE = environ.get("SYNAPSE_DISABLE_CLIENT_IP_STORAGE") == "true"
 
 
 @attr.s(slots=True, frozen=True, auto_attribs=True)
@@ -613,6 +616,11 @@ class ClientIpWorkerStore(ClientIpBackgroundUpdateStore, MonthlyActiveUsersWorke
            requests are not directly driven by end-users. This is a hack and we're not
            very proud of it.
         """
+
+        # Beep: don't bother storing client IPs at all (if env set)
+        if DISABLE_CLIENT_IP_STORAGE:
+            return
+
         # The sync proxy continuously triggers /sync even if the user is not
         # present so should be excluded from user_ips entries.
         if user_agent == "sync-v3-proxy-":
