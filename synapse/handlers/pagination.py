@@ -19,7 +19,10 @@
 #
 #
 import logging
+import time
 from typing import TYPE_CHECKING, List, Optional, Set, Tuple, cast
+
+from prometheus_client import Histogram
 
 from twisted.python.failure import Failure
 
@@ -50,6 +53,8 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+purge_time = Histogram("room_purge_time", "Time taken to purge rooms (sec)")
 
 # How many single event gaps we tolerate returning in a `/messages` response before we
 # backfill and try to fill in the history. This is an arbitrarily picked number so feel
@@ -385,6 +390,7 @@ class PaginationHandler:
             room_id: room to be purged
             force: set true to skip checking for joined users.
         """
+        purge_start = time.time()
         logger.info("starting purge room_id=%s force=%s", room_id, force)
 
         async with self._worker_locks.acquire_multi_read_write_lock(
@@ -407,6 +413,8 @@ class PaginationHandler:
 
             await self._storage_controllers.purge_events.purge_room(room_id)
 
+        purge_end = time.time()
+        purge_time.observe(purge_end - purge_start)
         logger.info("purge complete for room_id %s", room_id)
 
     @trace
