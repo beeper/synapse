@@ -47,8 +47,8 @@ logger = logging.getLogger(__name__)
 
 # Number of msec of granularity to store the user IP 'last seen' time. Smaller
 # times give more inserts into the database even for readonly API hits
-# 120 seconds == 2 minutes
-LAST_SEEN_GRANULARITY = 120 * 1000
+# 120 seconds == 2 minutes, Beep: updated to 1h
+LAST_SEEN_GRANULARITY = 3600 * 1000
 
 DISABLE_CLIENT_IP_STORAGE = environ.get("SYNAPSE_DISABLE_CLIENT_IP_STORAGE") == "true"
 
