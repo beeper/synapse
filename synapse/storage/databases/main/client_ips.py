@@ -20,6 +20,7 @@
 #
 
 import logging
+from os import environ
 from typing import (
     TYPE_CHECKING,
     Dict,
@@ -57,6 +58,8 @@ logger = logging.getLogger(__name__)
 # times give more inserts into the database even for readonly API hits
 # 120 seconds == 2 minutes
 LAST_SEEN_GRANULARITY = 120 * 1000
+
+DISABLE_CLIENT_IP_STORAGE = environ.get("SYNAPSE_DISABLE_CLIENT_IP_STORAGE") == "true"
 
 
 @attr.s(slots=True, frozen=True, auto_attribs=True)
@@ -698,14 +701,16 @@ class ClientIpWorkerStore(ClientIpBackgroundUpdateStore, MonthlyActiveUsersWorke
                 devices_keys.append((user_id, device_id))
                 devices_values.append((user_agent, last_seen, ip))
 
-        self.db_pool.simple_upsert_many_txn(
-            txn,
-            table="user_ips",
-            key_names=("user_id", "access_token", "ip"),
-            key_values=user_ips_keys,
-            value_names=("user_agent", "device_id", "last_seen"),
-            value_values=user_ips_values,
-        )
+        # Beep: only store user_ips if not disabled
+        if not DISABLE_CLIENT_IP_STORAGE:
+            self.db_pool.simple_upsert_many_txn(
+                txn,
+                table="user_ips",
+                key_names=("user_id", "access_token", "ip"),
+                key_values=user_ips_keys,
+                value_names=("user_agent", "device_id", "last_seen"),
+                value_values=user_ips_values,
+            )
 
         if devices_values:
             self.db_pool.simple_update_many_txn(
