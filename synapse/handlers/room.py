@@ -25,6 +25,7 @@ import logging
 import math
 import random
 import string
+import time
 from collections import OrderedDict
 from http import HTTPStatus
 from typing import (
@@ -40,6 +41,7 @@ from typing import (
 )
 
 import attr
+from prometheus_client import Histogram
 from typing_extensions import TypedDict
 
 import synapse.events.snapshot
@@ -104,6 +106,17 @@ id_server_scheme = "https://"
 FIVE_MINUTES_IN_MS = 5 * 60 * 1000
 
 
+shutdown_time = Histogram("room_shutdown_time", "Time taken to shutdown rooms (sec)")
+shutdown_kick_count = Histogram(
+    "room_shutdown_kick_count",
+    "Number of users successfully kicked while shutting down a room",
+)
+shutdown_failed_kick_count = Histogram(
+    "room_shutdown_failed_kick_count",
+    "Number of users that were failed to be kicked while shutting down a room",
+)
+
+
 @attr.s(slots=True, frozen=True, auto_attribs=True)
 class EventContext:
     events_before: List[EventBase]
@@ -144,7 +157,8 @@ class RoomCreationHandler:
                 "history_visibility": HistoryVisibility.SHARED,
                 "original_invitees_have_ops": True,
                 "guest_can_join": True,
-                "power_level_content_override": {"invite": 0},
+                # Beeper change: don't allow redactions by anyone in DM chats
+                "power_level_content_override": {"invite": 0, "redact": 1000},
             },
             RoomCreationPreset.PUBLIC_CHAT: {
                 "join_rules": JoinRules.PUBLIC,
@@ -360,6 +374,9 @@ class RoomCreationHandler:
             new_room_id,
             old_room_state,
         )
+
+        # Beeper: clear out any push actions and summaries for this room
+        await self.store.beeper_cleanup_tombstoned_room(old_room_id)
 
         return new_room_id
 
@@ -1966,6 +1983,7 @@ class RoomShutdownHandler:
         else:
             logger.info("Shutting down room %r", room_id)
 
+        shutdown_start = time.time()
         users = await self.store.get_local_users_related_to_room(room_id)
         for user_id, membership in users:
             # If the user is not in the room (or is banned), nothing to do.
@@ -2051,5 +2069,10 @@ class RoomShutdownHandler:
             )
         else:
             result["local_aliases"] = []
+
+        shutdown_end = time.time()
+        shutdown_kick_count.observe(len(result["kicked_users"]))
+        shutdown_failed_kick_count.observe(len(result["failed_to_kick_users"]))
+        shutdown_time.observe(shutdown_end - shutdown_start)
 
         return result

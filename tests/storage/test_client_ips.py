@@ -100,7 +100,7 @@ class ClientIpStoreTestCase(unittest.HomeserverTestCase):
                 user_id, "access_token", "ip", "user_agent", None
             )
         )
-        self.reactor.advance(200)
+        self.reactor.advance(3600)
         self.pump(0)
 
         result = cast(
@@ -153,7 +153,7 @@ class ClientIpStoreTestCase(unittest.HomeserverTestCase):
         )
         # Only one result, has been upserted.
         self.assertEqual(
-            result, [("access_token", "ip", "user_agent", None, 12345878000)]
+            result, [("access_token", "ip", "user_agent", None, 12349278000)]
         )
 
     @parameterized.expand([(False,), (True,)])
