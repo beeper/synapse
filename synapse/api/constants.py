@@ -89,6 +89,7 @@ class LoginType:
     SSO: Final = "m.login.sso"
     DUMMY: Final = "m.login.dummy"
     REGISTRATION_TOKEN: Final = "m.login.registration_token"
+    JWT: Final = "org.matrix.login.jwt"
 
 
 # This is used in the `type` parameter for /register when called by
@@ -268,6 +269,7 @@ class ReceiptTypes:
     READ: Final = "m.read"
     READ_PRIVATE: Final = "m.read.private"
     FULLY_READ: Final = "m.fully_read"
+    BEEPER_INBOX_DONE: Final = "com.beeper.inbox.done"
 
 
 class PublicRoomsFilterFields:
