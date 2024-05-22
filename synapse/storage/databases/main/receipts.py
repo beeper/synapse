@@ -421,8 +421,8 @@ class ReceiptsWorkerStore(SQLBaseStore):
                 sql = """
                     SELECT stream_id, instance_name, room_id, receipt_type,
                         user_id, event_id, thread_id, event_stream_ordering, data
-                    FROM receipts_linearized
-                    WHERE stream_id > ? AND stream_id <= ? AND
+                    FROM receipts_linearized WHERE
+                    stream_id > ? AND stream_id <= ? AND
                 """
                 clause, args = make_in_list_sql_clause(
                     self.database_engine, "room_id", room_ids
@@ -436,8 +436,8 @@ class ReceiptsWorkerStore(SQLBaseStore):
                 sql = """
                     SELECT stream_id, instance_name, room_id, receipt_type,
                         user_id, event_id, thread_id, event_stream_ordering, data
-                    FROM receipts_linearized
-                    WHERE stream_id > ? AND stream_id <= ? AND
+                    FROM receipts_linearized WHERE
+                    stream_id > ? AND stream_id <= ? AND
                 """
 
                 clause, args = make_in_list_sql_clause(
@@ -541,8 +541,8 @@ class ReceiptsWorkerStore(SQLBaseStore):
             if from_key:
                 sql = """
                     SELECT stream_id, instance_name, room_id, receipt_type, user_id, event_id, event_stream_ordering, data
-                    FROM receipts_linearized
-                    WHERE stream_id > ? AND stream_id <= ?
+                    FROM receipts_linearized WHERE
+                    stream_id > ? AND stream_id <= ?
                     ORDER BY stream_id DESC
                     LIMIT 100
                 """
