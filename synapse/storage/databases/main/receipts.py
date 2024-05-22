@@ -447,7 +447,15 @@ class ReceiptsWorkerStore(SQLBaseStore):
                 txn.execute(sql + clause, [to_key.get_max_stream_pos()] + list(args))
 
             return [
-                (room_id, receipt_type, user_id, event_id, thread_id, event_stream_ordering, data)
+                (
+                    room_id,
+                    receipt_type,
+                    user_id,
+                    event_id,
+                    thread_id,
+                    event_stream_ordering,
+                    data,
+                )
                 for stream_id, instance_name, room_id, receipt_type, user_id, event_id, thread_id, event_stream_ordering, data in txn
                 if MultiWriterStreamToken.is_stream_position_in_range(
                     from_key, to_key, instance_name, stream_id
@@ -459,7 +467,15 @@ class ReceiptsWorkerStore(SQLBaseStore):
         )
 
         results: JsonDict = {}
-        for room_id, receipt_type, user_id, event_id, thread_id, event_stream_ordering, data in txn_results:
+        for (
+            room_id,
+            receipt_type,
+            user_id,
+            event_id,
+            thread_id,
+            event_stream_ordering,
+            data,
+        ) in txn_results:
             # We want a single event per room, since we want to batch the
             # receipts by room, event and type.
             room_event = results.setdefault(
@@ -555,7 +571,14 @@ class ReceiptsWorkerStore(SQLBaseStore):
         )
 
         results: JsonDict = {}
-        for room_id, receipt_type, user_id, event_id, event_stream_ordering, data in txn_results:
+        for (
+            room_id,
+            receipt_type,
+            user_id,
+            event_id,
+            event_stream_ordering,
+            data,
+        ) in txn_results:
             # We want a single event per room, since we want to batch the
             # receipts by room, event and type.
             room_event = results.setdefault(
