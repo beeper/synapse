@@ -437,7 +437,7 @@ class ReceiptsWorkerStore(SQLBaseStore):
                     SELECT stream_id, instance_name, room_id, receipt_type,
                         user_id, event_id, thread_id, event_stream_ordering, data
                     FROM receipts_linearized WHERE
-                    stream_id > ? AND stream_id <= ? AND
+                    stream_id <= ? AND
                 """
 
                 clause, args = make_in_list_sql_clause(
