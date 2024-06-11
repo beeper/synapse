@@ -436,3 +436,8 @@ class ExperimentalConfig(Config):
         self.msc4115_membership_on_events = experimental.get(
             "msc4115_membership_on_events", False
         )
+
+        self.beeper_user_notification_counts_enabled = experimental.get(
+            "beeper_user_notification_counts_enabled",
+            False,
+        )
