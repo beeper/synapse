@@ -448,3 +448,8 @@ class ExperimentalConfig(Config):
 
         # MSC4156: Migrate server_name to via
         self.msc4156_enabled: bool = experimental.get("msc4156_enabled", False)
+
+        self.beeper_user_notification_counts_enabled = experimental.get(
+            "beeper_user_notification_counts_enabled",
+            False,
+        )

@@ -42,7 +42,6 @@ from typing import (
 
 import attr
 from prometheus_client import Histogram
-from typing_extensions import TypedDict
 
 import synapse.events.snapshot
 from synapse.api.constants import (
@@ -374,6 +373,9 @@ class RoomCreationHandler:
             new_room_id,
             old_room_state,
         )
+
+        # Beeper: clear out any push actions and summaries for this room
+        await self.store.beeper_cleanup_tombstoned_room(old_room_id)
 
         return new_room_id
 
