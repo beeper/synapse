@@ -443,3 +443,8 @@ class ExperimentalConfig(Config):
         self.msc3916_authenticated_media_enabled = experimental.get(
             "msc3916_authenticated_media_enabled", False
         )
+
+        self.beeper_user_notification_counts_enabled = experimental.get(
+            "beeper_user_notification_counts_enabled",
+            False,
+        )
