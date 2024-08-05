@@ -429,7 +429,7 @@ class TestBulkPushRuleEvaluator(HomeserverTestCase):
         )
 
         # An edit which is a mention will cause a notification.
-        self.assertTrue(
+        self.assertFalse(  # Beeper: changed from true per our base rule changes
             self._create_and_process(
                 bulk_evaluator,
                 {
