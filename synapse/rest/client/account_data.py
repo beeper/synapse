@@ -353,8 +353,8 @@ class RoomBeeperInboxStateServlet(RestServlet):
         if "done" in body:
             delta_ms = body["done"].get("at_delta") or 0
             done = {"updated_ts": ts, "at_ts": ts + delta_ms}
-            if "at_order" in body:
-                done["at_order"] = body["at_order"]
+            if "at_order" in body["done"]:
+                done["at_order"] = body["done"]["at_order"]
             await self.handler.add_account_data_to_room(
                 user_id, room_id, "com.beeper.inbox.done", done
             )
