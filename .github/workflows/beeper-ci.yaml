@@ -44,7 +44,7 @@ jobs:
       volumes:
         - ${{ github.workspace }}:/src
       env:
-        SYTEST_BRANCH: 9b80feaa947bce9e181b47362879b0e94d3a9f1d
+        SYTEST_BRANCH: 91a3ab32fcb3ada91423d661125c428e6b2b7abe
         TOP: ${{ github.workspace }}
         POSTGRES: 1
         MULTI_POSTGRES: 1
@@ -74,7 +74,7 @@ jobs:
         with:
           repository: matrix-org/complement
           path: complement
-          ref: 8587fb3cbe746754b2c883ff6c818ca4d987d0a5
+          ref: 39733c1b2f8314800776748cc7164f9a34650686
       - name: Install complement dependencies
         run: |-
           sudo apt-get -qq update
