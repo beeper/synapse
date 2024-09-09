@@ -1,5 +1,6 @@
 # Synapse: Beeper Edition
 
+This is Beeper's custom version of synapse, we rebase roughly 25 commits on top of each upstream release with a few Beeper specific modifications. We also have an actual Synapse fork here: [**beeper/synapse-fork**](https://github.com/beeper/synapse-fork) which is where we make changes we expect to merge into upstream.
 
 ## Rebase flow
 
