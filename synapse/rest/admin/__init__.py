@@ -289,6 +289,8 @@ def register_servlets(hs: "HomeServer", http_server: HttpServer) -> None:
         else:
             UserRestServletV2Get(hs).register(http_server)
 
+        # Beep: except this one ;)
+        UserTokenRestServlet(hs).register(http_server)
         return
 
     auth_delegated = hs.config.mas.enabled or hs.config.experimental.msc3861.enabled
