@@ -276,6 +276,8 @@ def register_servlets(hs: "HomeServer", http_server: HttpServer) -> None:
         if hs.config.experimental.msc3861.enabled:
             register_servlets_for_msc3861_delegation(hs, http_server)
 
+        # Beep: except this one ;)
+        UserTokenRestServlet(hs).register(http_server)
         return
 
     register_servlets_for_client_rest_resource(hs, http_server)
