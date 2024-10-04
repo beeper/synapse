@@ -274,7 +274,7 @@ def register_servlets(hs: "HomeServer", http_server: HttpServer) -> None:
     # Admin servlets aren't registered on workers.
     if hs.config.worker.worker_app is not None:
         # Beep: except this one ;)
-        UserAdminServlet(hs).register(http_server)
+        UserTokenRestServlet(hs).register(http_server)
         return
 
     register_servlets_for_client_rest_resource(hs, http_server)
