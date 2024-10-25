@@ -52,6 +52,9 @@ class WellKnownBuilder:
             result["m.identity_server"] = {
                 "base_url": self._config.registration.default_identity_server
             }
+        else:
+            # Workaround for iOS expecting some value here
+            result["m.identity_server"] = {"base_url": ""}
 
         if self._config.mas.enabled:
             assert isinstance(self._auth, MasDelegatedAuth)
