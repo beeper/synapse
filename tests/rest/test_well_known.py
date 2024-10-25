@@ -141,6 +141,8 @@ class WellKnownTests(unittest.HomeserverTestCase):
                         "issuer": "https://issuer",
                         "account": "https://my-account.issuer",
                     },
+                    # Beep: added because iOS crashed without
+                    "m.identity_server": {"base_url": ""},
                 },
             )
 
