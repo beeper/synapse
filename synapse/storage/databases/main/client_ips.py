@@ -628,6 +628,10 @@ class ClientIpWorkerStore(ClientIpBackgroundUpdateStore, MonthlyActiveUsersWorke
         if user_agent == "sync-v3-proxy-":
             return
 
+        # Beeper hack: don't track admin API IPs as not user generated requests
+        if user_id == "@admin-api:beeper.com":
+            return
+
         if not now:
             now = int(self._clock.time_msec())
         key = (user_id, access_token, ip)
