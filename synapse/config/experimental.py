@@ -447,3 +447,8 @@ class ExperimentalConfig(Config):
 
         # MSC4151: Report room API (Client-Server API)
         self.msc4151_enabled: bool = experimental.get("msc4151_enabled", False)
+
+        self.beeper_user_notification_counts_enabled = experimental.get(
+            "beeper_user_notification_counts_enabled",
+            False,
+        )
