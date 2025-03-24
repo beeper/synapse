@@ -474,15 +474,14 @@ class HttpPusher(Pusher):
             content: JsonDict = {
                 "event_id": event.event_id,
                 "room_id": event.room_id,
-                "counts": {
-                    "unread": badge,
-                    "com.beeper.server_type": "synapse",
-                },
                 "com.beeper.user_id": self.user_id,
                 "prio": priority,
             }
             if not self.disable_badge_count:
-                content["counts"] = {"unread": badge}
+                content["counts"] = {
+                    "unread": badge,
+                    "com.beeper.server_type": "synapse",
+                }
             # event_id_only doesn't include the tweaks, so override them.
             tweaks = {}
         else:
@@ -497,16 +496,12 @@ class HttpPusher(Pusher):
                 "type": event.type,
                 "sender": event.user_id,
                 "prio": priority,
-                "counts": {
-                    "unread": badge,
-                    "com.beeper.server_type": "synapse",
-                    # 'missed_calls': 2
-                },
                 "com.beeper.user_id": self.user_id,
             }
             if not self.disable_badge_count:
                 content["counts"] = {
                     "unread": badge,
+                    "com.beeper.server_type": "synapse",
                 }
             if event.type == "m.room.member" and event.is_state():
                 content["membership"] = event.content["membership"]
