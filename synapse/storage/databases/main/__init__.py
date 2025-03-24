@@ -41,6 +41,7 @@ from synapse.types import get_domain_from_id
 
 from .account_data import AccountDataStore
 from .appservice import ApplicationServiceStore, ApplicationServiceTransactionStore
+from .beeper import BeeperStore
 from .cache import CacheInvalidationWorkerStore
 from .censor_events import CensorEventsStore
 from .client_ips import ClientIpWorkerStore
@@ -160,6 +161,7 @@ class DataStore(
     TaskSchedulerWorkerStore,
     SlidingSyncStore,
     DelayedEventsStore,
+    BeeperStore,
 ):
     def __init__(
         self,
