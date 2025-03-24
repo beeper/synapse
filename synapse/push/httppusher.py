@@ -142,6 +142,8 @@ class HttpPusher(Pusher):
             pusher_config.app_id,
             pusher_config.pushkey,
         )
+        # Beeper: Save this so we can pass this on to Sygnal as well
+        self.user_name = pusher_config.user_name
 
         # Validate that there's a URL and it is of the proper form.
         if "url" not in self.data:
@@ -468,7 +470,7 @@ class HttpPusher(Pusher):
             rejected push keys otherwise. If this array is empty, the push fully
             succeeded.
         """
-        priority = "low"
+        priority = "high"  # Beep: always use high priority
         if (
             event.type == EventTypes.Encrypted
             or tweaks.get("highlight")
@@ -484,6 +486,11 @@ class HttpPusher(Pusher):
             content: JsonDict = {
                 "event_id": event.event_id,
                 "room_id": event.room_id,
+                "counts": {
+                    "unread": badge,
+                    "com.beeper.server_type": "synapse",
+                },
+                "com.beeper.user_id": self.user_id,
                 "prio": priority,
             }
             if not self.disable_badge_count:
@@ -502,6 +509,12 @@ class HttpPusher(Pusher):
                 "type": event.type,
                 "sender": event.user_id,
                 "prio": priority,
+                "counts": {
+                    "unread": badge,
+                    "com.beeper.server_type": "synapse",
+                    # 'missed_calls': 2
+                },
+                "com.beeper.user_id": self.user_id,
             }
             if not self.disable_badge_count:
                 content["counts"] = {
@@ -539,7 +552,11 @@ class HttpPusher(Pusher):
                 "id": "",
                 "type": None,
                 "sender": "",
-                "counts": {"unread": badge},
+                "counts": {
+                    "unread": badge,
+                    "com.beeper.server_type": "synapse",
+                },
+                "com.beeper.user_id": self.user_id,
                 "devices": [
                     {
                         "app_id": self.app_id,
