@@ -575,3 +575,8 @@ class ExperimentalConfig(Config):
 
         # MSC4155: Invite filtering
         self.msc4155_enabled: bool = experimental.get("msc4155_enabled", False)
+
+        self.beeper_user_notification_counts_enabled = experimental.get(
+            "beeper_user_notification_counts_enabled",
+            False,
+        )
