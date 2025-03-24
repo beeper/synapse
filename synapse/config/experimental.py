@@ -592,3 +592,8 @@ class ExperimentalConfig(Config):
         # MSC4306: Thread Subscriptions
         # (and MSC4308: sliding sync extension for thread subscriptions)
         self.msc4306_enabled: bool = experimental.get("msc4306_enabled", False)
+
+        self.beeper_user_notification_counts_enabled = experimental.get(
+            "beeper_user_notification_counts_enabled",
+            False,
+        )
