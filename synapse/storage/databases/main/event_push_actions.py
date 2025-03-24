@@ -1156,7 +1156,7 @@ class EventPushActionsWorkerStore(ReceiptsWorkerStore, StreamWorkerStore, SQLBas
         self,
         event_id: str,
         user_id_actions: dict[str, Collection[Mapping | str]],
-        count_as_unread: bool,
+        count_as_unread_by_user: dict[str, bool],
         thread_id: str,
     ) -> None:
         """Add the push actions for the event to the push action staging area.
@@ -1184,7 +1184,7 @@ class EventPushActionsWorkerStore(ReceiptsWorkerStore, StreamWorkerStore, SQLBas
                 _serialize_action(actions, bool(is_highlight)),  # actions column
                 notif,  # notif column
                 is_highlight,  # highlight column
-                int(count_as_unread),  # unread column
+                int(count_as_unread_by_user.get(user_id, 0)),  # unread column
                 thread_id,  # thread_id column
                 self.clock.time_msec(),  # inserted_ts column
             )
