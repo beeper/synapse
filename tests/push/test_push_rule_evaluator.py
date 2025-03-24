@@ -1104,7 +1104,7 @@ class PushRuleEvaluatorBaseRulesTestCase(unittest.TestCase):
                 "content": {
                     "m.relates_to": {
                         "event_id": "$event_id",
-                        "key": "\U0001F44D",
+                        "key": "\U0001f44d",
                         "rel_type": "m.annotation",
                     }
                 },
@@ -1124,21 +1124,25 @@ class PushRuleEvaluatorBaseRulesTestCase(unittest.TestCase):
             True,
             reaction_event.room_version.msc3931_push_features,
             True,
+            True,
+            False,
         )
 
         # Reaction to Brad's message, should be an action for Brad
         actions = dm_evaluator.run(
-            FilteredPushRules(PushRules([]), {}, True, True, True, True),
+            FilteredPushRules(PushRules([]), {}, True, True, True, True, True, True),
             "@brad:beeper.com",
             "Brad",
+            False,
         )
         self.assertTrue("notify" in actions)
 
         # Reaction to Brad's message, should not be an action for Nick
         actions = dm_evaluator.run(
-            FilteredPushRules(PushRules([]), {}, True, True, True, True),
+            FilteredPushRules(PushRules([]), {}, True, True, True, True, True, True),
             "@nick:beeper.com",
             "Nick",
+            False,
         )
         self.assertEqual(actions, [])
 
@@ -1152,19 +1156,23 @@ class PushRuleEvaluatorBaseRulesTestCase(unittest.TestCase):
             True,
             reaction_event.room_version.msc3931_push_features,
             True,
+            True,
+            False,
         )
 
         # Large rooms should never have emoji reaction notifications
         actions = large_room_evaluator.run(
-            FilteredPushRules(PushRules([]), {}, True, True, True, True),
+            FilteredPushRules(PushRules([]), {}, True, True, True, True, True, True),
             "@brad:beeper.com",
             "Brad",
+            False,
         )
         self.assertEqual(actions, [])
         actions = large_room_evaluator.run(
-            FilteredPushRules(PushRules([]), {}, True, True, True, True),
+            FilteredPushRules(PushRules([]), {}, True, True, True, True, True, True),
             "@nick:beeper.com",
             "Nick",
+            False,
         )
         self.assertEqual(actions, [])
 
@@ -1196,11 +1204,14 @@ class PushRuleEvaluatorBaseRulesTestCase(unittest.TestCase):
             True,
             event.room_version.msc3931_push_features,
             True,
+            True,
+            False,
         )
 
         actions = evaluator.run(
-            FilteredPushRules(PushRules([]), {}, True, True, True, True),
+            FilteredPushRules(PushRules([]), {}, True, True, True, True, True, True),
             "@brad:beeper.com",
             "Brad Murray",
+            False,
         )
         self.assertEqual(actions, [])
