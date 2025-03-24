@@ -1112,11 +1112,12 @@ class PushRuleEvaluatorBaseRulesTestCase(unittest.TestCase):
             True,
             reaction_event.room_version.msc3931_push_features,
             True,
+            True,
         )
 
         # Reaction to Brad's message, should be an action for Brad
         actions = dm_evaluator.run(
-            FilteredPushRules(PushRules([]), {}, True, True, True, True),
+            FilteredPushRules(PushRules([]), {}, True, True, True, True, True),
             "@brad:beeper.com",
             "Brad",
         )
@@ -1124,7 +1125,7 @@ class PushRuleEvaluatorBaseRulesTestCase(unittest.TestCase):
 
         # Reaction to Brad's message, should not be an action for Nick
         actions = dm_evaluator.run(
-            FilteredPushRules(PushRules([]), {}, True, True, True, True),
+            FilteredPushRules(PushRules([]), {}, True, True, True, True, True),
             "@nick:beeper.com",
             "Nick",
         )
@@ -1140,17 +1141,18 @@ class PushRuleEvaluatorBaseRulesTestCase(unittest.TestCase):
             True,
             reaction_event.room_version.msc3931_push_features,
             True,
+            True,
         )
 
         # Large rooms should never have emoji reaction notifications
         actions = large_room_evaluator.run(
-            FilteredPushRules(PushRules([]), {}, True, True, True, True),
+            FilteredPushRules(PushRules([]), {}, True, True, True, True, True),
             "@brad:beeper.com",
             "Brad",
         )
         self.assertEqual(actions, [])
         actions = large_room_evaluator.run(
-            FilteredPushRules(PushRules([]), {}, True, True, True, True),
+            FilteredPushRules(PushRules([]), {}, True, True, True, True, True),
             "@nick:beeper.com",
             "Nick",
         )
@@ -1184,10 +1186,11 @@ class PushRuleEvaluatorBaseRulesTestCase(unittest.TestCase):
             True,
             event.room_version.msc3931_push_features,
             True,
+            True,
         )
 
         actions = evaluator.run(
-            FilteredPushRules(PushRules([]), {}, True, True, True, True),
+            FilteredPushRules(PushRules([]), {}, True, True, True, True, True),
             "@brad:beeper.com",
             "Brad Murray",
         )
