@@ -536,3 +536,8 @@ class ExperimentalConfig(Config):
 
         # MSC4076: Add `disable_badge_count`` to pusher configuration
         self.msc4076_enabled: bool = experimental.get("msc4076_enabled", False)
+
+        self.beeper_user_notification_counts_enabled = experimental.get(
+            "beeper_user_notification_counts_enabled",
+            False,
+        )
