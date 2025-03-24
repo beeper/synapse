@@ -420,8 +420,8 @@ class HTTPPusherTests(HomeserverTestCase):
             self.push_attempts[1][1], "http://example.com/_matrix/push/v1/notify"
         )
 
-        # check that this is low-priority
-        self.assertEqual(self.push_attempts[1][2]["notification"]["prio"], "low")
+        # Beeper: all notifications are high priority
+        self.assertEqual(self.push_attempts[1][2]["notification"]["prio"], "high")
 
     def test_sends_high_priority_for_mention(self) -> None:
         """
@@ -497,8 +497,8 @@ class HTTPPusherTests(HomeserverTestCase):
             self.push_attempts[1][1], "http://example.com/_matrix/push/v1/notify"
         )
 
-        # check that this is low-priority
-        self.assertEqual(self.push_attempts[1][2]["notification"]["prio"], "low")
+        # Beeper: all notifications are high priority
+        self.assertEqual(self.push_attempts[1][2]["notification"]["prio"], "high")
 
     def test_sends_high_priority_for_atroom(self) -> None:
         """
@@ -581,8 +581,8 @@ class HTTPPusherTests(HomeserverTestCase):
             self.push_attempts[1][1], "http://example.com/_matrix/push/v1/notify"
         )
 
-        # check that this is low-priority
-        self.assertEqual(self.push_attempts[1][2]["notification"]["prio"], "low")
+        # Beeper: all notifications are high priority
+        self.assertEqual(self.push_attempts[1][2]["notification"]["prio"], "high")
 
     def test_push_unread_count_group_by_room(self) -> None:
         """
