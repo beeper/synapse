@@ -173,6 +173,7 @@ class SyncRestServlet(RestServlet):
         )
         filter_id = parse_string(request, "filter")
         full_state = parse_boolean(request, "full_state", default=False)
+        beeper_previews = parse_boolean(request, "beeper_previews", default=False)
 
         use_state_after = False
         if await self.store.is_feature_enabled(
@@ -184,13 +185,14 @@ class SyncRestServlet(RestServlet):
 
         logger.debug(
             "/sync: user=%r, timeout=%r, since=%r, "
-            "set_presence=%r, filter_id=%r, device_id=%r",
+            "set_presence=%r, filter_id=%r, device_id=%r, beeper_previews=%r",
             user,
             timeout,
             since,
             set_presence,
             filter_id,
             device_id,
+            beeper_previews,
         )
 
         # Stream position of the last ignored users account data event for this user,
@@ -215,6 +217,7 @@ class SyncRestServlet(RestServlet):
             device_id,
             last_ignore_accdata_streampos,
             use_state_after,
+            beeper_previews,
         )
 
         if filter_id is None:
@@ -252,6 +255,7 @@ class SyncRestServlet(RestServlet):
             is_guest=requester.is_guest,
             device_id=device_id,
             use_state_after=use_state_after,
+            beeper_previews=beeper_previews,
         )
 
         since_token = None
@@ -669,6 +673,17 @@ class SyncRestServlet(RestServlet):
             result["summary"] = room.summary
             if self._msc2654_enabled:
                 result["org.matrix.msc2654.unread_count"] = room.unread_count
+
+            if room.preview:
+                if "event" in room.preview:
+                    room.preview["event"] = (
+                        await self._event_serializer.serialize_events(
+                            [room.preview["event"]],
+                            time_now,
+                            config=serialize_options,
+                        )
+                    )[0]
+                result["com.beeper.inbox.preview"] = room.preview
 
         return result
 
