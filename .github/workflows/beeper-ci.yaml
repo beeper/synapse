@@ -39,11 +39,11 @@ jobs:
   test-sytest:
     runs-on: ubuntu-latest
     container:
-      image: matrixdotorg/sytest-synapse:focal
+      image: matrixdotorg/sytest-synapse:bullseye
       volumes:
         - ${{ github.workspace }}:/src
       env:
-        SYTEST_BRANCH: 91a3ab32fcb3ada91423d661125c428e6b2b7abe
+        SYTEST_BRANCH: 2cf761a64546728cea05042a340e684f980e826c
         TOP: ${{ github.workspace }}
         POSTGRES: 1
         MULTI_POSTGRES: 1
@@ -73,7 +73,7 @@ jobs:
         with:
           repository: matrix-org/complement
           path: complement
-          ref: 911d7d39773a79035a215377f869e19642b2129c
+          ref: 6dbf2bd09ae4539a2e49f84cb8b3e40de8633620
       - name: Install complement dependencies
         run: |-
           sudo apt-get -qq update
