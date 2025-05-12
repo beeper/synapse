@@ -26,6 +26,7 @@ import logging
 import math
 import random
 import string
+import time
 from collections import OrderedDict
 from collections.abc import Mapping
 from http import HTTPStatus
@@ -38,6 +39,8 @@ from typing import (
 )
 
 import attr
+from prometheus_client import Histogram
+from typing_extensions import TypedDict
 
 import synapse.events.snapshot
 from synapse.api.constants import (
@@ -110,6 +113,17 @@ logger = logging.getLogger(__name__)
 id_server_scheme = "https://"
 
 FIVE_MINUTES_IN_MS = 5 * 60 * 1000
+
+
+shutdown_time = Histogram("room_shutdown_time", "Time taken to shutdown rooms (sec)")
+shutdown_kick_count = Histogram(
+    "room_shutdown_kick_count",
+    "Number of users successfully kicked while shutting down a room",
+)
+shutdown_failed_kick_count = Histogram(
+    "room_shutdown_failed_kick_count",
+    "Number of users that were failed to be kicked while shutting down a room",
+)
 
 
 @attr.s(slots=True, frozen=True, auto_attribs=True)
@@ -2400,6 +2414,7 @@ class RoomShutdownHandler:
         else:
             logger.info("Shutting down room %r", room_id)
 
+        shutdown_start = time.time()
         users = await self.store.get_local_users_related_to_room(room_id)
         for user_id, membership in users:
             # If the user is not in the room (or is banned), nothing to do.
@@ -2486,5 +2501,10 @@ class RoomShutdownHandler:
             )
         else:
             result["local_aliases"] = []
+
+        shutdown_end = time.time()
+        shutdown_kick_count.observe(len(result["kicked_users"]))
+        shutdown_failed_kick_count.observe(len(result["failed_to_kick_users"]))
+        shutdown_time.observe(shutdown_end - shutdown_start)
 
         return result
