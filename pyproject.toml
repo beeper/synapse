@@ -360,6 +360,7 @@ ignore = [
     "B023",
     "E501",
     "E731",
+    "G004",
 ]
 select = [
     # pycodestyle
