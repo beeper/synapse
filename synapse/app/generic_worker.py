@@ -87,6 +87,7 @@ from synapse.storage.databases.main.metrics import ServerMetricsStore
 from synapse.storage.databases.main.monthly_active_users import (
     MonthlyActiveUsersWorkerStore,
 )
+from synapse.storage.databases.main.openid import OpenIdStore
 from synapse.storage.databases.main.presence import PresenceStore
 from synapse.storage.databases.main.profile import ProfileWorkerStore
 from synapse.storage.databases.main.purge_events import PurgeEventsStore
@@ -171,6 +172,7 @@ class GenericWorkerStore(
     SlidingSyncStore,
     DelayedEventsStore,
     BeeperStore,
+    OpenIdStore,
 ):
     # Properties that multiple storage classes define. Tell mypy what the
     # expected type is.
