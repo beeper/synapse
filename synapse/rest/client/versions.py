@@ -177,6 +177,8 @@ class VersionsRestServlet(RestServlet):
                     "uk.tcpip.msc4133": self.config.experimental.msc4133_enabled,
                     # MSC4155: Invite filtering
                     "org.matrix.msc4155": self.config.experimental.msc4155_enabled,
+                    # MSC4169: Backwards-compatible redaction sending useing `/send`
+                    "com.beeper.msc4169": self.config.experimental.msc4169_enabled,
                 },
             },
         )
