@@ -130,12 +130,12 @@ pub const BASE_APPEND_OVERRIDE_RULES: &[PushRule] = &[
     PushRule {
         rule_id: Cow::Borrowed("global/override/.com.beeper.suppress_send_message_status"),
         priority_class: 5,
-        conditions: Cow::Borrowed(&[
-            Condition::Known(KnownCondition::EventMatch(EventMatchCondition {
+        conditions: Cow::Borrowed(&[Condition::Known(KnownCondition::EventMatch(
+            EventMatchCondition {
                 key: Cow::Borrowed("type"),
                 pattern: Cow::Borrowed("com.beeper.message_send_status"),
-            })),
-        ]),
+            },
+        ))]),
         actions: Cow::Borrowed(&[Action::DontNotify]),
         default: true,
         default_enabled: true,
@@ -143,12 +143,12 @@ pub const BASE_APPEND_OVERRIDE_RULES: &[PushRule] = &[
     PushRule {
         rule_id: Cow::Borrowed("global/override/.com.beeper.suppress_power_levels"),
         priority_class: 5,
-        conditions: Cow::Borrowed(&[
-            Condition::Known(KnownCondition::EventMatch(EventMatchCondition {
+        conditions: Cow::Borrowed(&[Condition::Known(KnownCondition::EventMatch(
+            EventMatchCondition {
                 key: Cow::Borrowed("type"),
                 pattern: Cow::Borrowed("cm.room.power_levels"),
-            })),
-        ]),
+            },
+        ))]),
         actions: Cow::Borrowed(&[Action::DontNotify]),
         default: true,
         default_enabled: true,
@@ -736,12 +736,14 @@ pub const BASE_APPEND_UNDERRIDE_RULES: &[PushRule] = &[
             Condition::Known(KnownCondition::RoomMemberCount {
                 is: Some(Cow::Borrowed("<20")),
             }),
-            Condition::Known(KnownCondition::RelatedEventMatchType(RelatedEventMatchTypeCondition {
-                key: Cow::Borrowed("sender"),
-                pattern_type: Cow::Borrowed(&EventMatchPatternType::UserId),
-                rel_type: Cow::Borrowed("m.annotation"),
-                include_fallbacks: None,
-            })),
+            Condition::Known(KnownCondition::RelatedEventMatchType(
+                RelatedEventMatchTypeCondition {
+                    key: Cow::Borrowed("sender"),
+                    pattern_type: Cow::Borrowed(&EventMatchPatternType::UserId),
+                    rel_type: Cow::Borrowed("m.annotation"),
+                    include_fallbacks: None,
+                },
+            )),
         ]),
         actions: Cow::Borrowed(&[Action::Notify, HIGHLIGHT_FALSE_ACTION]),
         default: true,
