@@ -32,6 +32,7 @@ from synapse.api.filtering import Filter
 from synapse.events.utils import SerializeEventConfig
 from synapse.handlers.worker_lock import NEW_EVENT_DURING_PURGE_LOCK_NAME
 from synapse.logging.opentracing import trace
+from synapse.metrics import SERVER_NAME_LABEL
 from synapse.metrics.background_process_metrics import run_as_background_process
 from synapse.rest.admin._base import assert_user_is_admin
 from synapse.streams.config import PaginationConfig
@@ -54,7 +55,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-purge_time = Histogram("room_purge_time", "Time taken to purge rooms (sec)")
+purge_time = Histogram(
+    "room_purge_time",
+    "Time taken to purge rooms (sec)",
+    labelnames=[SERVER_NAME_LABEL],
+)
 
 # How many single event gaps we tolerate returning in a `/messages` response before we
 # backfill and try to fill in the history. This is an arbitrarily picked number so feel
@@ -416,7 +421,9 @@ class PaginationHandler:
             await self._storage_controllers.purge_events.purge_room(room_id)
 
         purge_end = time.time()
-        purge_time.observe(purge_end - purge_start)
+        purge_time.labels(**{SERVER_NAME_LABEL: self.server_name}).observe(
+            purge_end - purge_start
+        )
         logger.info("purge complete for room_id %s", room_id)
 
     @trace
