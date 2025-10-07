@@ -46,6 +46,7 @@ from synapse.http.servlet import (
     parse_string,
 )
 from synapse.http.site import SynapseRequest
+from synapse.metrics import SERVER_NAME_LABEL
 from synapse.rest.admin._base import (
     admin_patterns,
     assert_requester_is_admin,
@@ -67,6 +68,7 @@ logger = logging.getLogger(__name__)
 delete_time = Histogram(
     "admin_room_delete_time",
     "Time taken to delete rooms via the admin API (sec)",
+    labelnames=[SERVER_NAME_LABEL],
 )
 
 
@@ -356,7 +358,9 @@ class RoomRestServlet(RestServlet):
         )
         end = time.time()
         logger.info(f"[admin/rooms] deleting {room_id} took {end - start} seconds")
-        delete_time.observe(end - start)
+        delete_time.labels(**{SERVER_NAME_LABEL: request.our_server_name}).observe(
+            end - start
+        )
         return response
 
     async def _delete_room(

@@ -75,6 +75,7 @@ from synapse.events import EventBase
 from synapse.events.snapshot import UnpersistedEventContext
 from synapse.events.utils import copy_and_fixup_power_levels_contents
 from synapse.handlers.relations import BundledAggregations
+from synapse.metrics import SERVER_NAME_LABEL
 from synapse.rest.admin._base import assert_user_is_admin
 from synapse.streams import EventSource
 from synapse.types import (
@@ -112,14 +113,20 @@ id_server_scheme = "https://"
 FIVE_MINUTES_IN_MS = 5 * 60 * 1000
 
 
-shutdown_time = Histogram("room_shutdown_time", "Time taken to shutdown rooms (sec)")
+shutdown_time = Histogram(
+    "room_shutdown_time",
+    "Time taken to shutdown rooms (sec)",
+    labelnames=[SERVER_NAME_LABEL],
+)
 shutdown_kick_count = Histogram(
     "room_shutdown_kick_count",
     "Number of users successfully kicked while shutting down a room",
+    labelnames=[SERVER_NAME_LABEL],
 )
 shutdown_failed_kick_count = Histogram(
     "room_shutdown_failed_kick_count",
     "Number of users that were failed to be kicked while shutting down a room",
+    labelnames=[SERVER_NAME_LABEL],
 )
 
 
@@ -2466,8 +2473,14 @@ class RoomShutdownHandler:
             result["local_aliases"] = []
 
         shutdown_end = time.time()
-        shutdown_kick_count.observe(len(result["kicked_users"]))
-        shutdown_failed_kick_count.observe(len(result["failed_to_kick_users"]))
-        shutdown_time.observe(shutdown_end - shutdown_start)
+        shutdown_kick_count.labels(**{SERVER_NAME_LABEL: self.hs.hostname}).observe(
+            len(result["kicked_users"])
+        )
+        shutdown_failed_kick_count.labels(
+            **{SERVER_NAME_LABEL: self.hs.hostname}
+        ).observe(len(result["failed_to_kick_users"]))
+        shutdown_time.labels(**{SERVER_NAME_LABEL: self.hs.hostname}).observe(
+            shutdown_end - shutdown_start
+        )
 
         return result
