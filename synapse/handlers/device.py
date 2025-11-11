@@ -41,9 +41,7 @@ from synapse.api.errors import (
     SynapseError,
 )
 from synapse.logging.opentracing import log_kv, set_tag, trace
-from synapse.metrics.background_process_metrics import (
-    wrap_as_background_process,
-)
+from synapse.metrics.background_process_metrics import wrap_as_background_process
 from synapse.replication.http.devices import (
     ReplicationDeviceHandleRoomUnPartialStated,
     ReplicationHandleNewDeviceUpdateRestServlet,
@@ -189,6 +187,11 @@ class DeviceHandler:
                 self.hs.run_as_background_process,
                 DELETE_STALE_DEVICES_INTERVAL,
                 desc="delete_stale_devices",
+                func=self._delete_stale_devices,
+            )
+            # Beep: run this immediately since looping_call waits 24h after pod start
+            self.hs.run_as_background_process(
+                "delete_stale_devices",
                 func=self._delete_stale_devices,
             )
 
