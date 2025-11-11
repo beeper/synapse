@@ -102,6 +102,7 @@ from synapse.storage.prepare_database import prepare_database
 from synapse.types import ISynapseReactor, JsonDict
 from synapse.util.clock import Clock
 from synapse.util.json import json_encoder
+from synapse.util.task_scheduler import TaskScheduler
 
 from tests.utils import (
     LEAVE_DB,
@@ -1106,6 +1107,10 @@ def setup_test_homeserver(
     """
     if reactor is None:
         reactor = ThreadedMemoryReactorClock()
+
+    # Beep: the post-task sleep confuses tests that advance the fake reactor
+    # just far enough for a task to complete, so disable it.
+    TaskScheduler.SLEEP_AFTER_TASK_S = 0
 
     if config is None:
         config = default_config(server_name, parse=True)

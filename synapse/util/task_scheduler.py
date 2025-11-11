@@ -101,11 +101,13 @@ class TaskScheduler:
     # Time before a complete or failed task is deleted from the DB
     KEEP_TASKS_FOR_MS = 7 * 24 * 60 * 60 * 1000  # 1 week
     # Maximum number of tasks that can run at the same time
-    MAX_CONCURRENT_RUNNING_TASKS = 5
+    MAX_CONCURRENT_RUNNING_TASKS = 2  # Beep: temporarily changed from 5
     # Time from the last task update after which we will log a warning
     LAST_UPDATE_BEFORE_WARNING_MS = 24 * 60 * 60 * 1000  # 24hrs
     # Report a running task's status and usage every so often.
     OCCASIONAL_REPORT_INTERVAL = Duration(minutes=5)
+
+    SLEEP_AFTER_TASK_S = 1
 
     def __init__(self, hs: "HomeServer"):
         self.hs = hs  # nb must be called this for @wrap_as_background_process
@@ -486,6 +488,12 @@ class TaskScheduler:
                     )
                     status = TaskStatus.FAILED
                     error = f.getErrorMessage()
+
+                # Beep: sleep before we remove/complete the running task
+                if TaskScheduler.SLEEP_AFTER_TASK_S > 0:
+                    await self._clock.sleep(
+                        Duration(seconds=TaskScheduler.SLEEP_AFTER_TASK_S)
+                    )
 
                 await self._store.update_scheduled_task(
                     task.id,
