@@ -191,6 +191,11 @@ class DeviceHandler:
                 desc="delete_stale_devices",
                 func=self._delete_stale_devices,
             )
+            # Beep: run this immediately since looping_call waits 24h after pod start
+            self.hs.run_as_background_process(
+                "delete_stale_devices",
+                self._delete_stale_devices,
+            )
 
     async def _delete_stale_devices(self) -> None:
         """Background task that deletes devices which haven't been accessed for more than
