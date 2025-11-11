@@ -12,6 +12,8 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-python@v2
+        with:
+          python-version: "3.12"
       - run: pip install poetry
       - run: poetry install
       - run: poetry run ruff check --output-format=github .
@@ -21,6 +23,8 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-python@v2
+        with:
+          python-version: "3.12"
       - run: pip install poetry
       - run: poetry install --extras all
       - run: poetry run mypy
@@ -32,6 +36,8 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-python@v2
+        with:
+          python-version: "3.12"
       - run: pip install poetry
       - run: poetry install --extras all
       - run: poetry run trial -j4 tests
