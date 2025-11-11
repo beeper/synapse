@@ -110,6 +110,8 @@ class TaskScheduler:
     # Report a running task's status and usage every so often.
     OCCASIONAL_REPORT_INTERVAL = Duration(minutes=5)
 
+    SLEEP_AFTER_TASK_S = 1
+
     def __init__(self, hs: "HomeServer"):
         self.hs = hs  # nb must be called this for @wrap_as_background_process
         self.server_name = hs.hostname
@@ -360,7 +362,7 @@ class TaskScheduler:
         if id in self._running_tasks:
             deferred = self._running_tasks[id]
             deferred.cancel()
-            self._running_tasks.pop(id)
+            self._running_tasks.pop(id, None)
         await self.update_task(id, status=TaskStatus.CANCELLED)
 
     def on_new_task(self, task_id: str) -> None:
@@ -499,14 +501,23 @@ class TaskScheduler:
                     result=result,
                     error=error,
                 )
-                self._running_tasks.pop(task.id)
+
+                # Beep: throttle between scheduled tasks without hiding the
+                # terminal status from callers.
+                try:
+                    if TaskScheduler.SLEEP_AFTER_TASK_S > 0:
+                        await self._clock.sleep(
+                            Duration(seconds=TaskScheduler.SLEEP_AFTER_TASK_S)
+                        )
+                finally:
+                    self._running_tasks.pop(task.id, None)
+                    occasional_status_call.stop()
 
                 current_time = self._clock.time()
                 usage = log_context.get_resource_usage()
                 TaskScheduler._log_task_usage(
                     status.value, task, usage, current_time - start_time
                 )
-                occasional_status_call.stop()
 
             # Try launch a new task since we've finished with this one.
             self._clock.call_later(
