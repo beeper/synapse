@@ -73,6 +73,8 @@ class ScheduledTasksAdminApiTestCase(unittest.HomeserverTestCase):
                 "failed_test_task", resource_id="failed_task"
             )
         )
+        self.reactor.advance(self._task_scheduler.SLEEP_AFTER_TASK_S)
+        self.reactor.advance(0.2)
 
     def check_scheduled_tasks_response(self, scheduled_tasks: Mapping) -> list:
         result = []
