@@ -21,6 +21,7 @@
 
 import urllib.parse
 from typing import Any, Callable
+from unittest import skip as stdlib_skip
 from unittest.mock import AsyncMock, patch
 
 from twisted.internet.testing import MemoryReactor
@@ -406,6 +407,7 @@ class RelationsTestCase(BaseRelationsTestCase):
             m_replace_dict,
         )
 
+    @stdlib_skip("Beeper disables bundled aggregations")
     def test_edit(self) -> None:
         """Test that a simple edit works."""
         orig_body = {"body": "Hi!", "msgtype": "m.text"}
@@ -494,6 +496,7 @@ class RelationsTestCase(BaseRelationsTestCase):
             edit_event_content,
         )
 
+    @stdlib_skip("Beeper disables bundled aggregations")
     def test_multi_edit(self) -> None:
         """Test that multiple edits, including attempts by people who
         shouldn't be allowed, are correctly handled.
@@ -544,6 +547,7 @@ class RelationsTestCase(BaseRelationsTestCase):
             channel.json_body["event"], edit_event_id, edit_event_content
         )
 
+    @stdlib_skip("Beeper disables bundled aggregations")
     def test_edit_reply(self) -> None:
         """Test that editing a reply works."""
 
@@ -609,6 +613,7 @@ class RelationsTestCase(BaseRelationsTestCase):
                 result_event_dict, edit_event_id, edit_event_content
             )
 
+    @stdlib_skip("Beeper disables bundled aggregations")
     def test_edit_edit(self) -> None:
         """Test that an edit cannot be edited."""
         orig_body = {"body": "Hi!", "msgtype": "m.text"}
@@ -1072,6 +1077,7 @@ class RecursiveRelationTestCase(BaseRelationsTestCase):
         self.assertEqual(event_ids, [annotation_1])
 
 
+@stdlib_skip("Beeper disables bundled aggregations")
 class BundledAggregationsTestCase(BaseRelationsTestCase):
     """
     See RelationsTestCase.test_edit for a similar test for edits.
@@ -1478,6 +1484,7 @@ class BundledAggregationsTestCase(BaseRelationsTestCase):
         )
 
 
+@stdlib_skip("Beeper disables bundled aggregations")
 class RelationIgnoredUserTestCase(BaseRelationsTestCase):
     """Relations sent from an ignored user should be ignored."""
 
@@ -1574,6 +1581,7 @@ class RelationIgnoredUserTestCase(BaseRelationsTestCase):
         )
 
 
+@stdlib_skip("Beeper disables bundled aggregations")
 class RelationRedactionTestCase(BaseRelationsTestCase):
     """
     Test the behaviour of relations when the parent or child event is redacted.
@@ -1802,6 +1810,7 @@ class ThreadsTestCase(BaseRelationsTestCase):
             for ev in body["chunk"]
         ]
 
+    @stdlib_skip("Beeper disables bundled aggregations")
     def test_threads(self) -> None:
         """Create threads and ensure the ordering is due to their latest event."""
         # Create 2 threads.
