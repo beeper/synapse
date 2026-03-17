@@ -414,8 +414,15 @@ class RelationsHandler:
 
         return results
 
-    @trace
+    # Beeper: bundled aggregations aren't used in Beeper clients and are a
+    # wasted calculation.
     async def get_bundled_aggregations(
+        self, filtered_events: Iterable[FilteredEvent], user_id: str
+    ) -> dict[str, BundledAggregations]:
+        return {}
+
+    @trace
+    async def _orig_get_bundled_aggregations(
         self, filtered_events: Iterable[FilteredEvent], user_id: str
     ) -> dict[str, BundledAggregations]:
         """Generate bundled aggregations for events.
