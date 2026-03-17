@@ -434,8 +434,14 @@ class RelationsHandler:
 
         return results
 
-    @trace
+    # Beep beep: bundled aggregations aren't used in Beeper clients and are thus a wasted calculation
     async def get_bundled_aggregations(
+        self, events: Iterable[EventBase], user_id: str
+    ) -> Dict[str, BundledAggregations]:
+        return {}
+
+    @trace
+    async def _orig_get_bundled_aggregations(
         self, events: Iterable[EventBase], user_id: str
     ) -> Dict[str, BundledAggregations]:
         """Generate bundled aggregations for events.
