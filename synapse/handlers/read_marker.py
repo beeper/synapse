@@ -44,6 +44,7 @@ class ReadMarkerHandler:
         room_id: str,
         user_id: str,
         event_id: str,
+        allow_backward: bool = False,
         extra_content: Optional[JsonDict] = None,
     ) -> None:
         """Updates the read marker for a given user in a given room if the event ID given
@@ -62,7 +63,7 @@ class ReadMarkerHandler:
             # Get event ordering, this also ensures we know about the event
             event_ordering = await self.store.get_event_ordering(event_id, room_id)
 
-            if existing_read_marker:
+            if existing_read_marker and not allow_backward:
                 try:
                     old_event_ordering = await self.store.get_event_ordering(
                         existing_read_marker["event_id"], room_id
