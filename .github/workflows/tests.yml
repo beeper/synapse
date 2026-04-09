@@ -726,6 +726,10 @@ jobs:
 
       - name: Prepare Complement's Prerequisites
         run: synapse/.ci/scripts/setup_complement_prerequisites.sh
+        env:
+          # Beep: older version of complement since we have not
+          # upgraded synapse in a while
+          GITHUB_HEAD_REF: "1de64122c351539624c943d0ad7433e7b75e1ae0"
 
       - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
