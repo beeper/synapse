@@ -23,6 +23,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from synapse.api.constants import ReceiptTypes
+from synapse.api.errors import Codes, SynapseError
 from synapse.http.server import HttpServer
 from synapse.http.servlet import RestServlet, parse_json_object_from_request
 from synapse.http.site import SynapseRequest
@@ -71,6 +72,19 @@ class ReadMarkerRestServlet(RestServlet):
         )
 
         unrecognized_types = set(body.keys()) - self._known_receipt_types
+
+        if self.config.experimental.msc4446_enabled:
+            allow_backward = body.get("com.beeper.allow_backward", False)
+            if not isinstance(allow_backward, bool):
+                raise SynapseError(
+                    400,
+                    "com.beeper.allow_backward must be a boolean.",
+                    Codes.INVALID_PARAM,
+                )
+            unrecognized_types -= {"com.beeper.allow_backward"}
+        else:
+            allow_backward = False
+
         if unrecognized_types:
             # It's fine if there are unrecognized receipt types, but let's log
             # it to help debug clients that have typoed the receipt type.
@@ -91,6 +105,7 @@ class ReadMarkerRestServlet(RestServlet):
                     room_id,
                     user_id=requester.user.to_string(),
                     event_id=event_id,
+                    allow_backward=allow_backward,
                     extra_content=body.get("com.beeper.fully_read.extra", None),
                 )
             else:
