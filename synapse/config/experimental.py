@@ -622,3 +622,6 @@ class ExperimentalConfig(Config):
             "beeper_user_notification_counts_enabled",
             False,
         )
+
+        # MSC4446: Allow moving the fully read marker backwards.
+        self.msc4446_enabled: bool = experimental.get("msc4446_enabled", False)
