@@ -20,7 +20,7 @@
 #
 
 import urllib.parse
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from unittest.mock import AsyncMock, patch
 
 from twisted.internet.testing import MemoryReactor
