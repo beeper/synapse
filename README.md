@@ -2,6 +2,34 @@
 
 This is Beeper's custom version of synapse, we rebase roughly 25 commits on top of each upstream release with a few Beeper specific modifications. We also have an actual Synapse fork here: [**beeper/synapse-fork**](https://github.com/beeper/synapse-fork) which is where we make changes we expect to merge into upstream.
 
+## Branching strategy
+
+We have a bunch of branches. The main development branch for Beeper is
+the `beeper` branch. Push commits here and they get built for our
+Docker registry. The GitHub Actions logs include the specific image
+tag, which is based on the original upstream version as well as the
+commit hash.
+
+We also have versioned `beeper-x.y.z` branches. These are used to
+archive the history of the `beeper` branch as it is rebased onto newer
+upstream Synapse versions. When rebasing, we copy the current `beeper`
+branch back onto the old `beeper-x.y.z` branch for historical
+reference, then create a new `beeper-x.y.z` branch based on the new
+upstream version and rebase the `beeper` branch onto it, then
+force-push that resulting commit into the original `beeper` branch,
+which will become the new development target.
+
+We also have `upstream-x.y.z` branches that just track the upstream
+tags that we use as bases for Beeper changes, see the rebase flow
+below.
+
+## CI setup
+
+Note that we have a separate `beeper-ci.yml` GitHub Actions workflow.
+It runs exclusively on the `beeper*` branches, in place of the other
+CI workflows that upstream uses and that we have not removed from our
+fork. Don't get confused between the two.
+
 ## Rebase flow
 
 ### Create PR
