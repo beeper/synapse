@@ -10,10 +10,10 @@ jobs:
   lint-style:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.13"
       - run: pip install poetry
       - run: poetry install
       - run: poetry run ruff check --output-format=github .
@@ -21,10 +21,10 @@ jobs:
   lint-types:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.13"
       - run: pip install poetry
       - run: poetry install --extras all
       - run: poetry run mypy
@@ -34,10 +34,10 @@ jobs:
   test-trial:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.13"
       - run: pip install poetry
       - run: poetry install --extras all
       - run: poetry run trial -j4 tests
@@ -45,17 +45,17 @@ jobs:
   test-sytest:
     runs-on: ubuntu-latest
     container:
-      image: matrixdotorg/sytest-synapse:bullseye
+      image: matrixdotorg/sytest-synapse:bookworm
       volumes:
         - ${{ github.workspace }}:/src
       env:
-        SYTEST_BRANCH: 2cf761a64546728cea05042a340e684f980e826c
+        SYTEST_BRANCH: e9982eeedd352daaad1e24a067477070b6b5b0b7
         TOP: ${{ github.workspace }}
         POSTGRES: 1
         MULTI_POSTGRES: 1
         WOKRERS: 1
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v6
       - name: Run SyTest
         run: /bootstrap.sh synapse
         working-directory: /src
@@ -63,7 +63,7 @@ jobs:
         if: ${{ always() }}
         run: /sytest/scripts/tap_to_gha.pl /logs/results.tap
       - name: Upload SyTest logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: ${{ always() }}
         with:
           name: Sytest Logs - ${{ job.status }} - (${{ join(matrix.*, ', ') }})
@@ -74,17 +74,19 @@ jobs:
   test-complement:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
           repository: matrix-org/complement
           path: complement
-          ref: 6dbf2bd09ae4539a2e49f84cb8b3e40de8633620
+          ref: bc2b638b11f5b0a068e39ae51f7ac2782070d14f
       - name: Install complement dependencies
         run: |-
           sudo apt-get -qq update
           sudo apt-get install -qqy libolm3 libolm-dev
           go install -v github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt@latest
+          pip install poetry
+          poetry install
       - name: Run Complement
         run: ./scripts-dev/complement.sh
         env:
@@ -97,14 +99,10 @@ jobs:
     env:
       DOCKER_BUILDKIT: 1
     steps:
-      - uses: actions/checkout@v2
-      - uses: docker/setup-qemu-action@v2
-      - uses: docker/setup-buildx-action@v2
-        with:
-          # TEMPORARY, see: https://github.com/docker/build-push-action/issues/761
-          driver-opts: |
-            image=moby/buildkit:v0.10.6
-      - uses: docker/login-action@v2
+      - uses: actions/checkout@v6
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ${{ secrets.CI_REGISTRY }}
           username: ${{ secrets.CI_REGISTRY_USER }}
