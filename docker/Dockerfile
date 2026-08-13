@@ -94,7 +94,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
   uv pip install --prefix="/install" --no-deps -r /synapse/requirements.txt
 
 # Beeper: install http antispam
-RUN pip install --prefix="/install" --no-deps --no-warn-script-location synapse-http-antispam
+RUN pip install --prefix="/install" --no-deps --no-warn-script-location 'synapse-http-antispam>=0.5.1'
 
 # Copy over the rest of the synapse source code.
 COPY synapse /synapse/synapse/
