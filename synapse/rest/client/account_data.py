@@ -26,7 +26,11 @@ from typing import TYPE_CHECKING
 from synapse.api.constants import AccountDataTypes, ReceiptTypes
 from synapse.api.errors import AuthError, Codes, NotFoundError, SynapseError
 from synapse.http.server import HttpServer
-from synapse.http.servlet import RestServlet, parse_json_object_from_request
+from synapse.http.servlet import (
+    RestServlet,
+    parse_json_object_from_request,
+    parse_string,
+)
 from synapse.http.site import SynapseRequest
 from synapse.rest.client.read_marker import ReadMarkerRestServlet
 from synapse.types import JsonDict, JsonMapping, RoomID
@@ -86,6 +90,7 @@ class AccountDataServlet(RestServlet):
         _check_can_set_account_data_type(account_data_type)
 
         body = parse_json_object_from_request(request)
+        expected_revision_id = parse_string(request, "com.beeper.expect_revision_id")
 
         # If experimental support for MSC3391 is enabled, then providing an empty dict
         # as the value for an account data type should be functionally equivalent to
@@ -97,7 +102,9 @@ class AccountDataServlet(RestServlet):
                 )
                 return 200, {}
 
-        await self.handler.add_account_data_for_user(user_id, account_data_type, body)
+        await self.handler.add_account_data_for_user(
+            user_id, account_data_type, body, expected_revision_id
+        )
 
         return 200, {}
 
@@ -209,6 +216,7 @@ class RoomAccountDataServlet(RestServlet):
         _check_can_set_account_data_type(account_data_type)
 
         body = parse_json_object_from_request(request)
+        expected_revision_id = parse_string(request, "com.beeper.expect_revision_id")
 
         # If experimental support for MSC3391 is enabled, then providing an empty dict
         # as the value for an account data type should be functionally equivalent to
@@ -221,7 +229,7 @@ class RoomAccountDataServlet(RestServlet):
                 return 200, {}
 
         await self.handler.add_account_data_to_room(
-            user_id, room_id, account_data_type, body
+            user_id, room_id, account_data_type, body, expected_revision_id
         )
 
         return 200, {}

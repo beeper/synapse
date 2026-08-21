@@ -152,6 +152,9 @@ class Codes(str, Enum):
     # Part of MSC4326
     UNKNOWN_DEVICE = "ORG.MATRIX.MSC4326.M_UNKNOWN_DEVICE"
 
+    # Beeper: account data compare-and-swap via com.beeper.expect_revision_id
+    EXPECTED_REVISION_ID_MISMATCH = "COM.BEEPER.REVISION_ID_MISMATCH"
+
 
 class CodeMessageException(RuntimeError):
     """An exception with integer code, a message string attributes and optional headers.
