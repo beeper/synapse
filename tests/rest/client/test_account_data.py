@@ -18,13 +18,21 @@
 # [This file includes modifications made by New Vector Limited]
 #
 #
+import urllib.parse
 from unittest.mock import AsyncMock
 
+from twisted.internet.testing import MemoryReactor
+
 from synapse.api.constants import ReceiptTypes
+from synapse.api.errors import Codes
 from synapse.rest import admin
 from synapse.rest.client import account_data, login, room
+from synapse.server import HomeServer
+from synapse.types import JsonDict
+from synapse.util.clock import Clock
 
 from tests import unittest
+from tests.server import FakeChannel
 
 
 class AccountDataTestCase(unittest.HomeserverTestCase):
@@ -212,3 +220,168 @@ class AccountDataTestCase(unittest.HomeserverTestCase):
             )
         )
         self.assertNotEqual(existing_read_marker, new_read_marker)
+
+
+class AccountDataCASTestCase(unittest.HomeserverTestCase):
+    """Tests for the com.beeper.expect_revision_id compare-and-swap query param."""
+
+    servlets = [
+        admin.register_servlets,
+        login.register_servlets,
+        room.register_servlets,
+        account_data.register_servlets,
+    ]
+
+    def prepare(self, reactor: MemoryReactor, clock: Clock, hs: HomeServer) -> None:
+        self.store = hs.get_datastores().main
+        self.user_id = self.register_user("user", "password")
+        self.tok = self.login("user", "password")
+        self.room_id = self.helper.create_room_as(self.user_id, tok=self.tok)
+
+        # (name, PUT path) for both flavors of account data.
+        self.endpoints = [
+            ("global", f"/user/{self.user_id}/account_data"),
+            ("room", f"/user/{self.user_id}/rooms/{self.room_id}/account_data"),
+        ]
+
+    def _put(
+        self,
+        base_path: str,
+        account_data_type: str,
+        content: JsonDict,
+        expect_revision_id: str | None = None,
+    ) -> FakeChannel:
+        url = f"{base_path}/{account_data_type}"
+        if expect_revision_id is not None:
+            url += "?com.beeper.expect_revision_id=" + urllib.parse.quote(
+                expect_revision_id
+            )
+        return self.make_request("PUT", url, content, access_token=self.tok)
+
+    def _get_stored(self, name: str, account_data_type: str) -> JsonDict | None:
+        if name == "global":
+            content = self.get_success(
+                self.store.get_global_account_data_by_type_for_user(
+                    self.user_id, account_data_type
+                )
+            )
+        else:
+            content = self.get_success(
+                self.store.get_account_data_for_room_and_type(
+                    self.user_id, self.room_id, account_data_type
+                )
+            )
+        return dict(content) if content is not None else None
+
+    def test_no_param_always_writes(self) -> None:
+        """Without the query param, writes succeed regardless of stored revision."""
+        for name, path in self.endpoints:
+            with self.subTest(endpoint=name):
+                channel = self._put(
+                    path, "org.example.foo", {"com.beeper.revision_id": "abc"}
+                )
+                self.assertEqual(channel.code, 200, channel.result)
+
+                channel = self._put(path, "org.example.foo", {"bar": "baz"})
+                self.assertEqual(channel.code, 200, channel.result)
+                self.assertEqual(
+                    self._get_stored(name, "org.example.foo"), {"bar": "baz"}
+                )
+
+    def test_expect_with_no_existing_data(self) -> None:
+        """Any expected revision (including empty) matches when no data exists."""
+        for name, path in self.endpoints:
+            with self.subTest(endpoint=name):
+                channel = self._put(
+                    path, "org.example.new1", {"a": 1}, expect_revision_id="anything"
+                )
+                self.assertEqual(channel.code, 200, channel.result)
+
+                channel = self._put(
+                    path, "org.example.new2", {"a": 1}, expect_revision_id=""
+                )
+                self.assertEqual(channel.code, 200, channel.result)
+
+    def test_expect_with_no_stored_revision(self) -> None:
+        """Any expected revision matches when stored content lacks a revision id."""
+        for name, path in self.endpoints:
+            with self.subTest(endpoint=name):
+                self._put(path, "org.example.foo", {"bar": "baz"})
+
+                channel = self._put(
+                    path, "org.example.foo", {"a": 1}, expect_revision_id="xyz"
+                )
+                self.assertEqual(channel.code, 200, channel.result)
+
+    def test_expect_with_non_string_stored_revision(self) -> None:
+        """A non-string stored revision id is treated as unset."""
+        for name, path in self.endpoints:
+            with self.subTest(endpoint=name):
+                self._put(path, "org.example.foo", {"com.beeper.revision_id": 5})
+
+                channel = self._put(
+                    path, "org.example.foo", {"a": 1}, expect_revision_id="xyz"
+                )
+                self.assertEqual(channel.code, 200, channel.result)
+
+    def test_expect_match(self) -> None:
+        """A matching expected revision allows the write; new content need not
+        carry a revision id itself."""
+        for name, path in self.endpoints:
+            with self.subTest(endpoint=name):
+                self._put(
+                    path,
+                    "org.example.foo",
+                    {"com.beeper.revision_id": "abc", "v": 1},
+                )
+
+                new_content = {"com.beeper.revision_id": "def", "v": 2}
+                channel = self._put(
+                    path, "org.example.foo", new_content, expect_revision_id="abc"
+                )
+                self.assertEqual(channel.code, 200, channel.result)
+                self.assertEqual(self._get_stored(name, "org.example.foo"), new_content)
+
+                # A revision id in the new content is not required.
+                channel = self._put(
+                    path, "org.example.foo", {"v": 3}, expect_revision_id="def"
+                )
+                self.assertEqual(channel.code, 200, channel.result)
+                self.assertEqual(self._get_stored(name, "org.example.foo"), {"v": 3})
+
+    def test_expect_mismatch(self) -> None:
+        """A mismatched expected revision is rejected with 409 and the stored
+        content is returned in the error body."""
+        stored_content = {"com.beeper.revision_id": "abc", "v": 1}
+        for name, path in self.endpoints:
+            with self.subTest(endpoint=name):
+                self._put(path, "org.example.foo", stored_content)
+
+                channel = self._put(
+                    path, "org.example.foo", {"v": 2}, expect_revision_id="xyz"
+                )
+                self.assertEqual(channel.code, 409, channel.result)
+                self.assertEqual(
+                    channel.json_body["errcode"], Codes.EXPECTED_REVISION_ID_MISMATCH
+                )
+                self.assertEqual(
+                    channel.json_body["com.beeper.current_content"], stored_content
+                )
+                # The stored data is unchanged.
+                self.assertEqual(
+                    self._get_stored(name, "org.example.foo"), stored_content
+                )
+
+    def test_empty_expect_with_stored_revision(self) -> None:
+        """An empty expected revision fails against an existing stored revision."""
+        for name, path in self.endpoints:
+            with self.subTest(endpoint=name):
+                self._put(path, "org.example.foo", {"com.beeper.revision_id": "abc"})
+
+                channel = self._put(
+                    path, "org.example.foo", {"v": 2}, expect_revision_id=""
+                )
+                self.assertEqual(channel.code, 409, channel.result)
+                self.assertEqual(
+                    channel.json_body["errcode"], Codes.EXPECTED_REVISION_ID_MISMATCH
+                )
