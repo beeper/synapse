@@ -58,11 +58,14 @@ class ReplicationAddUserAccountDataRestServlet(ReplicationEndpoint):
 
     @staticmethod
     async def _serialize_payload(  # type: ignore[override]
-        user_id: str, account_data_type: str, content: JsonDict
+        user_id: str, account_data_type: str, content: JsonDict,
+        expected_revision_id: str | None = None,
     ) -> JsonDict:
-        payload = {
+        payload: JsonDict = {
             "content": content,
         }
+        if expected_revision_id is not None:
+            payload["expected_revision_id"] = expected_revision_id
 
         return payload
 
@@ -70,7 +73,8 @@ class ReplicationAddUserAccountDataRestServlet(ReplicationEndpoint):
         self, request: Request, content: JsonDict, user_id: str, account_data_type: str
     ) -> tuple[int, JsonDict]:
         max_stream_id = await self.handler.add_account_data_for_user(
-            user_id, account_data_type, content["content"]
+            user_id, account_data_type, content["content"],
+            expected_revision_id=content.get("expected_revision_id"),
         )
 
         return 200, {"max_stream_id": max_stream_id}
@@ -138,11 +142,14 @@ class ReplicationAddRoomAccountDataRestServlet(ReplicationEndpoint):
 
     @staticmethod
     async def _serialize_payload(  # type: ignore[override]
-        user_id: str, room_id: str, account_data_type: str, content: JsonDict
+        user_id: str, room_id: str, account_data_type: str, content: JsonDict,
+        expected_revision_id: str | None = None,
     ) -> JsonDict:
-        payload = {
+        payload: JsonDict = {
             "content": content,
         }
+        if expected_revision_id is not None:
+            payload["expected_revision_id"] = expected_revision_id
 
         return payload
 
@@ -155,7 +162,8 @@ class ReplicationAddRoomAccountDataRestServlet(ReplicationEndpoint):
         account_data_type: str,
     ) -> tuple[int, JsonDict]:
         max_stream_id = await self.handler.add_account_data_to_room(
-            user_id, room_id, account_data_type, content["content"]
+            user_id, room_id, account_data_type, content["content"],
+            expected_revision_id=content.get("expected_revision_id"),
         )
 
         return 200, {"max_stream_id": max_stream_id}

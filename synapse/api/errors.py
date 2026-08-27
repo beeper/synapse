@@ -125,6 +125,9 @@ class Codes(str, Enum):
     AS_PING_CONNECTION_TIMEOUT = "M_CONNECTION_TIMEOUT"
     AS_PING_CONNECTION_FAILED = "M_CONNECTION_FAILED"
 
+    # Beeper: account data compare-and-swap via com.beeper.expect_revision_id
+    EXPECTED_REVISION_ID_MISMATCH = "COM.BEEPER.REVISION_ID_MISMATCH"
+
     # Attempt to send a second annotation with the same event type & annotation key
     # MSC2677
     DUPLICATE_ANNOTATION = "M_DUPLICATE_ANNOTATION"
