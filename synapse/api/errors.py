@@ -130,6 +130,9 @@ class Codes(str, Enum):
     AS_FEDPROXY_CONNECTION_FAILED = "IO.ELEMENT.MSC4512.M_FEDPROXY_CONNECTION_FAILED"
     AS_FEDPROXY_DESTINATION_DENIED = "IO.ELEMENT.MSC4512.M_FEDPROXY_DESTINATION_DENIED"
 
+    # Beeper: account data compare-and-swap via com.beeper.expect_revision_id
+    EXPECTED_REVISION_ID_MISMATCH = "COM.BEEPER.REVISION_ID_MISMATCH"
+
     # Attempt to send a second annotation with the same event type & annotation key
     # MSC2677
     DUPLICATE_ANNOTATION = "M_DUPLICATE_ANNOTATION"
