@@ -41,6 +41,7 @@ from synapse.storage.database import (
 )
 from synapse.storage.databases.main.cache import CacheInvalidationWorkerStore
 from synapse.storage.databases.main.push_rule import PushRulesWorkerStore
+from synapse.storage.engines import PostgresEngine
 from synapse.storage.invite_rule import (
     AllowAllInviteRulesConfig,
     InviteRulesConfig,
@@ -640,7 +641,8 @@ class AccountDataWorkerStore(PushRulesWorkerStore, CacheInvalidationWorkerStore)
         super().process_replication_position(stream_name, instance_name, token)
 
     async def add_account_data_to_room(
-        self, user_id: str, room_id: str, account_data_type: str, content: JsonDict
+        self, user_id: str, room_id: str, account_data_type: str, content: JsonDict,
+        expected_revision_id: str | None = None,
     ) -> int:
         """Add some account_data to a room for a user.
 
@@ -649,6 +651,8 @@ class AccountDataWorkerStore(PushRulesWorkerStore, CacheInvalidationWorkerStore)
             room_id: The room to add a tag for.
             account_data_type: The type of account_data to add.
             content: A json object to associate with the tag.
+            expected_revision_id: If set, only write if the stored content's
+                `com.beeper.revision_id` matches (compare-and-swap).
 
         Returns:
             The maximum stream ID.
@@ -657,9 +661,11 @@ class AccountDataWorkerStore(PushRulesWorkerStore, CacheInvalidationWorkerStore)
 
         content_json = json_encoder.encode(content)
 
-        async with self._account_data_id_gen.get_next() as next_id:
-            await self.db_pool.simple_upsert(
-                desc="add_room_account_data",
+        def _add_account_data_to_room_txn(
+            txn: LoggingTransaction, next_id: int
+        ) -> None:
+            self._upsert_account_data_txn(
+                txn,
                 table="room_account_data",
                 keyvalues={
                     "user_id": user_id,
@@ -667,6 +673,14 @@ class AccountDataWorkerStore(PushRulesWorkerStore, CacheInvalidationWorkerStore)
                     "account_data_type": account_data_type,
                 },
                 values={"stream_id": next_id, "content": content_json},
+                expected_revision_id=expected_revision_id,
+            )
+
+        async with self._account_data_id_gen.get_next() as next_id:
+            await self.db_pool.runInteraction(
+                "add_room_account_data",
+                _add_account_data_to_room_txn,
+                next_id,
             )
 
             self._account_data_stream_cache.entity_has_changed(user_id, next_id)
@@ -742,7 +756,8 @@ class AccountDataWorkerStore(PushRulesWorkerStore, CacheInvalidationWorkerStore)
         return self._account_data_id_gen.get_current_token()
 
     async def add_account_data_for_user(
-        self, user_id: str, account_data_type: str, content: JsonDict
+        self, user_id: str, account_data_type: str, content: JsonDict,
+        expected_revision_id: str | None = None,
     ) -> int:
         """Add some global account_data for a user.
 
@@ -750,6 +765,8 @@ class AccountDataWorkerStore(PushRulesWorkerStore, CacheInvalidationWorkerStore)
             user_id: The user to add a tag for.
             account_data_type: The type of account_data to add.
             content: A json object to associate with the tag.
+            expected_revision_id: If set, only write if the stored content's
+                `com.beeper.revision_id` matches (compare-and-swap).
 
         Returns:
             The maximum stream ID.
@@ -764,6 +781,7 @@ class AccountDataWorkerStore(PushRulesWorkerStore, CacheInvalidationWorkerStore)
                 user_id,
                 account_data_type,
                 content,
+                expected_revision_id,
             )
 
             self._account_data_stream_cache.entity_has_changed(user_id, next_id)
@@ -774,6 +792,84 @@ class AccountDataWorkerStore(PushRulesWorkerStore, CacheInvalidationWorkerStore)
 
         return self._account_data_id_gen.get_current_token()
 
+    def _upsert_account_data_txn(
+        self,
+        txn: LoggingTransaction,
+        table: str,
+        keyvalues: dict[str, str],
+        values: dict[str, Any],
+        expected_revision_id: str | None,
+    ) -> None:
+        """Beeper: upsert account data, enforcing the compare-and-swap
+        condition when an expected revision ID is given.
+
+        Raises a 409 SynapseError if the stored content has a (string)
+        `com.beeper.revision_id` that differs from the expected one. A missing
+        row, missing field, or non-string field matches any expected value.
+        """
+        if expected_revision_id is None:
+            self.db_pool.simple_upsert_txn(txn, table, keyvalues, values)
+            return
+
+        select_sql = "SELECT content FROM %s WHERE %s" % (
+            table,
+            " AND ".join("%s = ?" % k for k in keyvalues),
+        )
+        if isinstance(self.database_engine, PostgresEngine):
+            # Lock the row so concurrent CAS writes serialize. Under Synapse's
+            # default REPEATABLE READ isolation, a row modified by a concurrent
+            # transaction instead raises a serialization failure, which
+            # runInteraction retries with a fresh snapshot. (SQLite serializes
+            # writes anyway, so a plain SELECT suffices there.)
+            select_sql += " FOR UPDATE"
+        txn.execute(select_sql, list(keyvalues.values()))
+        row = txn.fetchone()
+
+        if row is None:
+            # There is no row to lock, so a check-then-write would let two
+            # concurrent first writes both pass the check. Make the INSERT
+            # itself the atomic point instead: it only succeeds if no
+            # concurrent write landed first (in-flight inserts on the same
+            # key serialize via speculative insertion), so on success the
+            # no-data match genuinely held at write time. On conflict, fall
+            # through to compare against the winning row.
+            if self.db_pool.simple_upsert_txn_native_upsert(
+                txn, table, keyvalues, values={}, insertion_values=values
+            ):
+                return
+            txn.execute(select_sql, list(keyvalues.values()))
+            row = txn.fetchone()
+            if row is None:
+                # Under REPEATABLE READ the conflicting row was committed
+                # after our snapshot, so the re-read cannot see it. The
+                # upsert below then hits that invisible row and raises a
+                # serialization failure (40001), which runInteraction
+                # retries from scratch with a fresh snapshot that does see
+                # the row and compares against it. (Under READ COMMITTED
+                # the re-read would have found the row directly.)
+                self.db_pool.simple_upsert_txn(txn, table, keyvalues, values)
+                return
+
+        stored_content = db_to_json(row[0])
+        stored_revision_id = None
+        if isinstance(stored_content, dict):
+            rev = stored_content.get("com.beeper.revision_id")
+            if isinstance(rev, str):
+                stored_revision_id = rev
+
+        if (
+            stored_revision_id is not None
+            and stored_revision_id != expected_revision_id
+        ):
+            raise SynapseError(
+                409,
+                "Account data revision ID mismatch",
+                Codes.EXPECTED_REVISION_ID_MISMATCH,
+                additional_fields={"com.beeper.current_content": stored_content},
+            )
+
+        self.db_pool.simple_upsert_txn(txn, table, keyvalues, values)
+
     def _add_account_data_for_user(
         self,
         txn: LoggingTransaction,
@@ -781,6 +877,7 @@ class AccountDataWorkerStore(PushRulesWorkerStore, CacheInvalidationWorkerStore)
         user_id: str,
         account_data_type: str,
         content: JsonDict,
+        expected_revision_id: str | None = None,
     ) -> None:
         content_json = json_encoder.encode(content)
 
@@ -796,11 +893,12 @@ class AccountDataWorkerStore(PushRulesWorkerStore, CacheInvalidationWorkerStore)
                     )
                 }
 
-        self.db_pool.simple_upsert_txn(
+        self._upsert_account_data_txn(
             txn,
             table="account_data",
             keyvalues={"user_id": user_id, "account_data_type": account_data_type},
             values={"stream_id": next_id, "content": content_json},
+            expected_revision_id=expected_revision_id,
         )
 
         # Ignored users get denormalized into a separate table as an optimisation.

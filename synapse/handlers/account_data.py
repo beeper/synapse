@@ -104,7 +104,8 @@ class AccountDataHandler:
                 logger.exception("Failed to run module callback %s: %s", callback, e)
 
     async def add_account_data_to_room(
-        self, user_id: str, room_id: str, account_data_type: str, content: JsonDict
+        self, user_id: str, room_id: str, account_data_type: str, content: JsonDict,
+        expected_revision_id: str | None = None,
     ) -> int:
         """Add some account_data to a room for a user.
 
@@ -113,13 +114,15 @@ class AccountDataHandler:
             room_id: The room to add a tag for.
             account_data_type: The type of account_data to add.
             content: A json object to associate with the tag.
+            expected_revision_id: If set, only write if the stored content's
+                `com.beeper.revision_id` matches (compare-and-swap).
 
         Returns:
             The maximum stream ID.
         """
         if self._instance_name in self._account_data_writers:
             max_stream_id = await self._store.add_account_data_to_room(
-                user_id, room_id, account_data_type, content
+                user_id, room_id, account_data_type, content, expected_revision_id
             )
 
             self._notifier.on_new_event(
@@ -136,6 +139,7 @@ class AccountDataHandler:
                 room_id=room_id,
                 account_data_type=account_data_type,
                 content=content,
+                expected_revision_id=expected_revision_id,
             )
             return response["max_stream_id"]
 
@@ -181,7 +185,8 @@ class AccountDataHandler:
             return response["max_stream_id"]
 
     async def add_account_data_for_user(
-        self, user_id: str, account_data_type: str, content: JsonDict
+        self, user_id: str, account_data_type: str, content: JsonDict,
+        expected_revision_id: str | None = None,
     ) -> int:
         """Add some global account_data for a user.
 
@@ -189,6 +194,8 @@ class AccountDataHandler:
             user_id: The user to add some account data for.
             account_data_type: The type of account_data to add.
             content: The content json dictionary.
+            expected_revision_id: If set, only write if the stored content's
+                `com.beeper.revision_id` matches (compare-and-swap).
 
         Returns:
             The maximum stream ID.
@@ -196,7 +203,7 @@ class AccountDataHandler:
 
         if self._instance_name in self._account_data_writers:
             max_stream_id = await self._store.add_account_data_for_user(
-                user_id, account_data_type, content
+                user_id, account_data_type, content, expected_revision_id
             )
 
             self._notifier.on_new_event(
@@ -212,6 +219,7 @@ class AccountDataHandler:
                 user_id=user_id,
                 account_data_type=account_data_type,
                 content=content,
+                expected_revision_id=expected_revision_id,
             )
             return response["max_stream_id"]
 
