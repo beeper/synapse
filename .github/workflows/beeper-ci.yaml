@@ -113,6 +113,7 @@ jobs:
             tag=$(cat pyproject.toml | grep -E "^version =" | sed -E 's/^version = "(.+)"$/\1/')
           else
             tag="${{ github.head_ref || github.ref_name }}"
+            tag="${tag//\//-}"
           fi
 
           docker buildx build \
