@@ -132,5 +132,7 @@ class BeeperTerseJsonFormatter(JsonFormatter):
             "level": record.levelname.lower(),
             "time": round(record.created, 2),
         }
+        if record.exc_info and record.exc_info[0]:
+            event["exc_traceback"] = self.formatException(record.exc_info)
 
         return self._format(record, event)
