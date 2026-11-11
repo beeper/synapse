@@ -12,11 +12,19 @@
 # <https://www.gnu.org/licenses/agpl-3.0.html>.
 #
 
+from unittest.mock import AsyncMock
+
 from twisted.internet.testing import MemoryReactor
 
 from synapse.api.constants import AccountDataTypes
 from synapse.rest import admin
-from synapse.rest.client import account_data, login, push_rule, room
+from synapse.rest.client import (
+    account_data,
+    login,
+    push_rule,
+    room,
+    room_upgrade_rest_servlet,
+)
 from synapse.server import HomeServer
 from synapse.storage.databases.main.account_data import (
     BEEPER_MUTE_BACKFILL_UPDATE,
@@ -38,6 +46,7 @@ class BeeperMuteTestCase(unittest.HomeserverTestCase):
         room.register_servlets,
         account_data.register_servlets,
         push_rule.register_servlets,
+        room_upgrade_rest_servlet.register_servlets,
     ]
 
     def prepare(self, reactor: MemoryReactor, clock: Clock, hs: HomeServer) -> None:
@@ -123,6 +132,27 @@ class BeeperMuteTestCase(unittest.HomeserverTestCase):
         assert rule is not None
         self.assertEqual(rule["actions"], [])
         self.assertTrue(rule["enabled"])
+
+    def test_mute_account_data_unmute_keeps_unmuted_rule(self) -> None:
+        actions = ["notify", {"set_tweak": "sound", "value": "ping"}]
+        self._put_rule(self.room_id, actions)
+        self._put_mute(self.room_id, {"muted_until": 0})
+        rule = self._get_rule(self.room_id)
+        assert rule is not None
+        self.assertEqual(rule["actions"], actions)
+
+        self._put_rule(self.room_id, [])
+        channel = self.make_request(
+            "PUT",
+            f"/pushrules/global/room/{self.room_id}/enabled",
+            {"enabled": False},
+            access_token=self.tok,
+        )
+        self.assertEqual(channel.code, 200, channel.result)
+        self._put_mute(self.room_id, {"muted_until": 0})
+        rule = self._get_rule(self.room_id)
+        assert rule is not None
+        self.assertFalse(rule["enabled"])
 
     def test_push_rule_writes_mute_account_data(self) -> None:
         self._put_rule(self.room_id, [])
@@ -224,6 +254,43 @@ class BeeperMuteTestCase(unittest.HomeserverTestCase):
             self.reactor.advance(60)
         self.assertIsNone(self._get_rule(self.room_id))
         self.assertEqual(self._get_mute(self.room_id), content)
+
+    def test_failed_expiry_is_rescheduled(self) -> None:
+        handler = self.hs.get_account_data_handler()
+        handler.expire_beeper_mute = AsyncMock(side_effect=Exception("boom"))  # type: ignore[method-assign]
+
+        self._put_mute(self.room_id, {"muted_until": self.clock.time_msec() + 60_000})
+        for _ in range(3):
+            self.reactor.advance(60)
+
+        tasks = self.get_success(
+            self.store.get_scheduled_tasks(
+                actions=[BEEPER_MUTE_EXPIRY_ACTION],
+                statuses=[TaskStatus.SCHEDULED],
+            )
+        )
+        self.assertEqual(len(tasks), 1)
+        self.assertEqual(
+            tasks[0].params, {"user_id": self.user_id, "room_id": self.room_id}
+        )
+
+    def test_room_upgrade_keeps_timed_mute(self) -> None:
+        content = {"muted_until": self.clock.time_msec() + 3_600_000}
+        self._put_mute(self.room_id, content)
+
+        channel = self.make_request(
+            "POST",
+            f"/_matrix/client/v3/rooms/{self.room_id}/upgrade",
+            {"new_version": "10"},
+            access_token=self.tok,
+        )
+        self.assertEqual(channel.code, 200, channel.result)
+        new_room_id = channel.json_body["replacement_room"]
+
+        self.assertEqual(self._get_mute(new_room_id), content)
+        rule = self._get_rule(new_room_id)
+        assert rule is not None
+        self.assertEqual(rule["actions"], [])
 
     def test_expiry_ignores_replaced_mute(self) -> None:
         self._put_mute(self.room_id, {"muted_until": self.clock.time_msec() + 120_000})

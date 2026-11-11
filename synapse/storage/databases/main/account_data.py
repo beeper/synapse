@@ -913,7 +913,7 @@ class AccountDataWorkerStore(PushRulesWorkerStore, CacheInvalidationWorkerStore)
                 self._beeper_schedule_mute_expiry_txn(
                     txn, user_id, room_id, muted_until
                 )
-        elif rule_muted is not None:
+        elif rule_muted:
             self._beeper_delete_room_rule_txn(txn, user_id, room_id)
 
     def _beeper_sync_mute_from_push_rule_txn(

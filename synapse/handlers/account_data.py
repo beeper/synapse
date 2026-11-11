@@ -51,6 +51,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+BEEPER_MUTE_EXPIRY_RETRY_MS = 60_000
+
 ON_ACCOUNT_DATA_UPDATED_CALLBACK = Callable[[str, str | None, str, JsonDict], Awaitable]
 
 
@@ -82,7 +84,9 @@ class AccountDataHandler:
         )
         self._account_data_writers = hs.config.worker.writers.account_data
 
-        hs.get_task_scheduler().register_action(
+        self._clock = hs.get_clock()
+        self._task_scheduler = hs.get_task_scheduler()
+        self._task_scheduler.register_action(
             self._expire_beeper_mute_task, BEEPER_MUTE_EXPIRY_ACTION
         )
 
@@ -302,7 +306,19 @@ class AccountDataHandler:
         self, task: ScheduledTask
     ) -> tuple[TaskStatus, JsonMapping | None, str | None]:
         assert task.params is not None
-        await self.expire_beeper_mute(task.params["user_id"], task.params["room_id"])
+        try:
+            await self.expire_beeper_mute(
+                task.params["user_id"], task.params["room_id"]
+            )
+        except Exception as e:
+            logger.exception("Failed to expire com.beeper.mute, rescheduling")
+            await self._task_scheduler.schedule_task(
+                BEEPER_MUTE_EXPIRY_ACTION,
+                resource_id=task.resource_id,
+                timestamp=self._clock.time_msec() + BEEPER_MUTE_EXPIRY_RETRY_MS,
+                params=task.params,
+            )
+            return TaskStatus.FAILED, None, str(e)
         return TaskStatus.COMPLETE, None, None
 
     async def add_tag_to_room(
