@@ -18,13 +18,16 @@
 # [This file includes modifications made by New Vector Limited]
 #
 #
+import contextlib
 import logging
 from http import HTTPStatus
 from typing import (
     TYPE_CHECKING,
     Any,
+    AsyncContextManager,
     Collection,
     Iterable,
+    Literal,
     Mapping,
     Sequence,
     cast,
@@ -35,8 +38,9 @@ from twisted.internet import defer
 from synapse.api.errors import Codes, StoreError, SynapseError
 from synapse.config.homeserver import ExperimentalConfig
 from synapse.logging.context import make_deferred_yieldable, run_in_background
+from synapse.push.rulekinds import PRIORITY_CLASS_MAP
 from synapse.replication.tcp.streams import PushRulesStream
-from synapse.storage._base import SQLBaseStore
+from synapse.storage._base import SQLBaseStore, db_to_json
 from synapse.storage.database import (
     DatabasePool,
     LoggingDatabaseConnection,
@@ -51,9 +55,9 @@ from synapse.storage.engines import PostgresEngine, Sqlite3Engine
 from synapse.storage.push_rule import InconsistentRuleException, RuleNotFoundException
 from synapse.storage.util.id_generators import IdGenerator, MultiWriterIdGenerator
 from synapse.synapse_rust.push import FilteredPushRules, PushRule, PushRules
-from synapse.types import JsonDict
+from synapse.types import JsonDict, StreamKeyType
 from synapse.util import unwrapFirstError
-from synapse.util.async_helpers import gather_results
+from synapse.util.async_helpers import Linearizer, gather_results
 from synapse.util.caches.descriptors import cached, cachedList
 from synapse.util.caches.stream_change_cache import StreamChangeCache
 from synapse.util.json import json_encoder
@@ -62,6 +66,8 @@ if TYPE_CHECKING:
     from synapse.server import HomeServer
 
 logger = logging.getLogger(__name__)
+
+BEEPER_ROOM_RULE_PREFIX = "global/room/"
 
 
 def _load_rules(
@@ -206,6 +212,10 @@ class PushRulesWorkerStore(
         self._push_rules_enable_id_gen = IdGenerator(db_conn, "push_rules_enable", "id")
 
         self._config = hs.config.push_rules
+
+        self._beeper_mute_linearizer = Linearizer(
+            name="beeper_mute", clock=hs.get_clock()
+        )
 
     def get_max_push_rules_stream_id(self) -> int:
         """Get the position of the push rules stream.
@@ -469,13 +479,12 @@ class PushRulesWorkerStore(
                 Codes.UNKNOWN,
             )
 
-        async with self._push_rules_stream_id_gen.get_next() as stream_id:
-            event_stream_ordering = self._stream_id_gen.get_current_token()
-
+        def add_push_rule_txn(
+            txn: LoggingTransaction, stream_id: int, event_stream_ordering: int
+        ) -> None:
             if before or after:
-                await self.db_pool.runInteraction(
-                    "_add_push_rule_relative_txn",
-                    self._add_push_rule_relative_txn,
+                self._add_push_rule_relative_txn(
+                    txn,
                     stream_id,
                     event_stream_ordering,
                     user_id,
@@ -487,9 +496,8 @@ class PushRulesWorkerStore(
                     after,
                 )
             else:
-                await self.db_pool.runInteraction(
-                    "_add_push_rule_highest_priority_txn",
-                    self._add_push_rule_highest_priority_txn,
+                self._add_push_rule_highest_priority_txn(
+                    txn,
                     stream_id,
                     event_stream_ordering,
                     user_id,
@@ -497,6 +505,20 @@ class PushRulesWorkerStore(
                     priority_class,
                     conditions_json,
                     actions_json,
+                )
+            self._beeper_sync_mute_from_push_rule_txn(txn, user_id, rule_id)
+
+        async with self._beeper_mute_lock(user_id, rule_id):
+            async with self._push_rules_stream_id_gen.get_next() as stream_id:
+                event_stream_ordering = self._stream_id_gen.get_current_token()
+
+                await self.db_pool.runInteraction(
+                    "_add_push_rule_relative_txn"
+                    if before or after
+                    else "_add_push_rule_highest_priority_txn",
+                    add_push_rule_txn,
+                    stream_id,
+                    event_stream_ordering,
                 )
 
     def _add_push_rule_relative_txn(
@@ -509,8 +531,8 @@ class PushRulesWorkerStore(
         priority_class: int,
         conditions_json: str,
         actions_json: str,
-        before: str,
-        after: str,
+        before: str | None,
+        after: str | None,
     ) -> None:
         if not self._is_push_writer:
             raise Exception("Not a push writer")
@@ -768,15 +790,18 @@ class PushRulesWorkerStore(
                 txn, stream_id, event_stream_ordering, user_id, rule_id, op="DELETE"
             )
 
-        async with self._push_rules_stream_id_gen.get_next() as stream_id:
-            event_stream_ordering = self._stream_id_gen.get_current_token()
+            self._beeper_sync_mute_from_push_rule_txn(txn, user_id, rule_id)
 
-            await self.db_pool.runInteraction(
-                "delete_push_rule",
-                delete_push_rule_txn,
-                stream_id,
-                event_stream_ordering,
-            )
+        async with self._beeper_mute_lock(user_id, rule_id):
+            async with self._push_rules_stream_id_gen.get_next() as stream_id:
+                event_stream_ordering = self._stream_id_gen.get_current_token()
+
+                await self.db_pool.runInteraction(
+                    "delete_push_rule",
+                    delete_push_rule_txn,
+                    stream_id,
+                    event_stream_ordering,
+                )
 
     async def set_push_rule_enabled(
         self, user_id: str, rule_id: str, enabled: bool, is_default_rule: bool
@@ -802,18 +827,19 @@ class PushRulesWorkerStore(
         if not self._is_push_writer:
             raise Exception("Not a push writer")
 
-        async with self._push_rules_stream_id_gen.get_next() as stream_id:
-            event_stream_ordering = self._stream_id_gen.get_current_token()
-            await self.db_pool.runInteraction(
-                "_set_push_rule_enabled_txn",
-                self._set_push_rule_enabled_txn,
-                stream_id,
-                event_stream_ordering,
-                user_id,
-                rule_id,
-                enabled,
-                is_default_rule,
-            )
+        async with self._beeper_mute_lock(user_id, rule_id):
+            async with self._push_rules_stream_id_gen.get_next() as stream_id:
+                event_stream_ordering = self._stream_id_gen.get_current_token()
+                await self.db_pool.runInteraction(
+                    "_set_push_rule_enabled_txn",
+                    self._set_push_rule_enabled_txn,
+                    stream_id,
+                    event_stream_ordering,
+                    user_id,
+                    rule_id,
+                    enabled,
+                    is_default_rule,
+                )
 
     def _set_push_rule_enabled_txn(
         self,
@@ -871,6 +897,8 @@ class PushRulesWorkerStore(
             rule_id,
             op="ENABLE" if enabled else "DISABLE",
         )
+
+        self._beeper_sync_mute_from_push_rule_txn(txn, user_id, rule_id)
 
     async def set_push_rule_actions(
         self,
@@ -971,15 +999,18 @@ class PushRulesWorkerStore(
                 data={"actions": actions_json},
             )
 
-        async with self._push_rules_stream_id_gen.get_next() as stream_id:
-            event_stream_ordering = self._stream_id_gen.get_current_token()
+            self._beeper_sync_mute_from_push_rule_txn(txn, user_id, rule_id)
 
-            await self.db_pool.runInteraction(
-                "set_push_rule_actions",
-                set_push_rule_actions_txn,
-                stream_id,
-                event_stream_ordering,
-            )
+        async with self._beeper_mute_lock(user_id, rule_id):
+            async with self._push_rules_stream_id_gen.get_next() as stream_id:
+                event_stream_ordering = self._stream_id_gen.get_current_token()
+
+                await self.db_pool.runInteraction(
+                    "set_push_rule_actions",
+                    set_push_rule_actions_txn,
+                    stream_id,
+                    event_stream_ordering,
+                )
 
     def _insert_push_rules_update_txn(
         self,
@@ -1010,6 +1041,105 @@ class PushRulesWorkerStore(
         txn.call_after(self.get_push_rules_for_user.invalidate, (user_id,))
         txn.call_after(
             self.push_rules_stream_cache.entity_has_changed, user_id, stream_id
+        )
+
+    def _beeper_mute_lock(
+        self, user_id: str, rule_id: str
+    ) -> AsyncContextManager[None]:
+        if rule_id.startswith(BEEPER_ROOM_RULE_PREFIX):
+            return self._beeper_mute_linearizer.queue(user_id)
+        return contextlib.nullcontext()
+
+    def _beeper_notify(
+        self,
+        stream_key: Literal[StreamKeyType.ACCOUNT_DATA, StreamKeyType.PUSH_RULES],
+        stream_id: int,
+        user_id: str,
+    ) -> None:
+        self.hs.get_notifier().on_new_event(stream_key, stream_id, users=[user_id])
+
+    def _beeper_sync_mute_from_push_rule_txn(
+        self, txn: LoggingTransaction, user_id: str, rule_id: str
+    ) -> None:
+        # Overridden by AccountDataWorkerStore, which owns com.beeper.mute.
+        pass
+
+    def _beeper_get_room_rule_muted_txn(
+        self,
+        txn: LoggingTransaction,
+        user_id: str,
+        rule_id: str,
+        for_update: bool = False,
+    ) -> bool | None:
+        sql = "SELECT actions FROM push_rules WHERE user_name = ? AND rule_id = ?"
+        if for_update and isinstance(self.database_engine, PostgresEngine):
+            sql += " FOR UPDATE"
+        txn.execute(sql, (user_id, rule_id))
+        row = txn.fetchone()
+        if row is None:
+            return None
+
+        enabled = self.db_pool.simple_select_one_onecol_txn(
+            txn,
+            "push_rules_enable",
+            {"user_name": user_id, "rule_id": rule_id},
+            "enabled",
+            allow_none=True,
+        )
+        if enabled is not None and not enabled:
+            return False
+
+        return "notify" not in db_to_json(row[0])
+
+    def _beeper_mute_room_rule_txn(
+        self, txn: LoggingTransaction, user_id: str, room_id: str
+    ) -> None:
+        rule_id = BEEPER_ROOM_RULE_PREFIX + room_id
+        stream_id = self._push_rules_stream_id_gen.get_next_txn(txn)
+        self._add_push_rule_highest_priority_txn(
+            txn,
+            stream_id,
+            self._stream_id_gen.get_current_token(),
+            user_id,
+            rule_id,
+            PRIORITY_CLASS_MAP["room"],
+            json_encoder.encode(
+                [{"kind": "event_match", "key": "room_id", "pattern": room_id}]
+            ),
+            "[]",
+        )
+        self.db_pool.simple_upsert_txn(
+            txn,
+            "push_rules_enable",
+            {"user_name": user_id, "rule_id": rule_id},
+            {"enabled": 1},
+            {"id": self._push_rules_enable_id_gen.get_next()},
+        )
+        txn.call_after(
+            self._beeper_notify, StreamKeyType.PUSH_RULES, stream_id, user_id
+        )
+
+    def _beeper_delete_room_rule_txn(
+        self, txn: LoggingTransaction, user_id: str, room_id: str
+    ) -> None:
+        rule_id = BEEPER_ROOM_RULE_PREFIX + room_id
+        stream_id = self._push_rules_stream_id_gen.get_next_txn(txn)
+        self.db_pool.simple_delete_txn(
+            txn, "push_rules_enable", {"user_name": user_id, "rule_id": rule_id}
+        )
+        self.db_pool.simple_delete_txn(
+            txn, "push_rules", {"user_name": user_id, "rule_id": rule_id}
+        )
+        self._insert_push_rules_update_txn(
+            txn,
+            stream_id,
+            self._stream_id_gen.get_current_token(),
+            user_id,
+            rule_id,
+            op="DELETE",
+        )
+        txn.call_after(
+            self._beeper_notify, StreamKeyType.PUSH_RULES, stream_id, user_id
         )
 
     async def copy_push_rule_from_room_to_room(

@@ -294,11 +294,86 @@ class ReplicationRemoveTagRestServlet(ReplicationEndpoint):
         return 200, {"max_stream_id": max_stream_id}
 
 
+class ReplicationExpireBeeperMuteRestServlet(ReplicationEndpoint):
+    """Expire a timed com.beeper.mute on the account data worker.
+
+    Request format:
+
+        POST /_synapse/replication/expire_beeper_mute/:user_id/:room_id
+
+        {}
+
+    """
+
+    NAME = "expire_beeper_mute"
+    PATH_ARGS = ("user_id", "room_id")
+    CACHE = False
+
+    def __init__(self, hs: "HomeServer"):
+        super().__init__(hs)
+
+        self.handler = hs.get_account_data_handler()
+
+    @staticmethod
+    async def _serialize_payload(  # type: ignore[override]
+        user_id: str, room_id: str
+    ) -> JsonDict:
+        return {}
+
+    async def _handle_request(  # type: ignore[override]
+        self, request: Request, content: JsonDict, user_id: str, room_id: str
+    ) -> tuple[int, JsonDict]:
+        await self.handler.expire_beeper_mute(user_id, room_id)
+
+        return 200, {}
+
+
+class ReplicationBackfillBeeperMutesRestServlet(ReplicationEndpoint):
+    """Backfill com.beeper.mute from muting room push rules on the account
+    data worker.
+
+    Request format:
+
+        POST /_synapse/replication/backfill_beeper_mutes
+
+        {
+            "candidates": [[user_id, room_id], ...],
+        }
+
+    """
+
+    NAME = "backfill_beeper_mutes"
+    PATH_ARGS = ()
+    CACHE = False
+
+    def __init__(self, hs: "HomeServer"):
+        super().__init__(hs)
+
+        self.handler = hs.get_account_data_handler()
+
+    @staticmethod
+    async def _serialize_payload(  # type: ignore[override]
+        candidates: list[tuple[str, str]],
+    ) -> JsonDict:
+        return {"candidates": candidates}
+
+    async def _handle_request(  # type: ignore[override]
+        self, request: Request, content: JsonDict
+    ) -> tuple[int, JsonDict]:
+        written = await self.handler.backfill_beeper_mutes(
+            [(user_id, room_id) for user_id, room_id in content["candidates"]]
+        )
+
+        return 200, {"written": written}
+
+
 def register_servlets(hs: "HomeServer", http_server: HttpServer) -> None:
     ReplicationAddUserAccountDataRestServlet(hs).register(http_server)
     ReplicationAddRoomAccountDataRestServlet(hs).register(http_server)
     ReplicationAddTagRestServlet(hs).register(http_server)
     ReplicationRemoveTagRestServlet(hs).register(http_server)
+    ReplicationExpireBeeperMuteRestServlet(hs).register(http_server)
+    ReplicationBackfillBeeperMutesRestServlet(hs).register(http_server)
 
     if hs.config.experimental.msc3391_enabled:
         ReplicationRemoveUserAccountDataRestServlet(hs).register(http_server)
