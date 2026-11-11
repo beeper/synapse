@@ -19,6 +19,7 @@
 #
 #
 
+import contextlib
 import logging
 import re
 from typing import (
@@ -40,7 +41,10 @@ from synapse.storage.database import (
     LoggingTransaction,
 )
 from synapse.storage.databases.main.cache import CacheInvalidationWorkerStore
-from synapse.storage.databases.main.push_rule import PushRulesWorkerStore
+from synapse.storage.databases.main.push_rule import (
+    BEEPER_ROOM_RULE_PREFIX,
+    PushRulesWorkerStore,
+)
 from synapse.storage.engines import PostgresEngine
 from synapse.storage.invite_rule import (
     AllowAllInviteRulesConfig,
@@ -49,10 +53,11 @@ from synapse.storage.invite_rule import (
     MSC4380InviteRulesConfig,
 )
 from synapse.storage.util.id_generators import MultiWriterIdGenerator
-from synapse.types import JsonDict, JsonMapping
+from synapse.types import JsonDict, JsonMapping, StreamKeyType, TaskStatus
 from synapse.util.caches.descriptors import cached
 from synapse.util.caches.stream_change_cache import StreamChangeCache
 from synapse.util.json import json_encoder
+from synapse.util.stringutils import random_string
 
 if TYPE_CHECKING:
     from synapse.server import HomeServer
@@ -62,6 +67,22 @@ logger = logging.getLogger(__name__)
 # Regex pattern for detecting a bridge bot (cached here for performance)
 SYNAPSE_BOT_PATTERN = re.compile(r"^@_.*_bot\:*")
 HUNGRYSERV_BOT_PATTERN = re.compile(r"^@[a-z]+bot\:beeper.local")
+
+BEEPER_MUTE_EXPIRY_ACTION = "beeper_mute_expiry"
+BEEPER_MUTE_BACKFILL_UPDATE = "beeper_mute_account_data_backfill"
+
+
+def _beeper_muted_until(content: JsonMapping | None) -> int:
+    if not content:
+        return 0
+    muted_until = content.get("muted_until")
+    if not isinstance(muted_until, int) or isinstance(muted_until, bool):
+        return 0
+    return muted_until
+
+
+def _beeper_is_muted(muted_until: int, now_ms: int) -> bool:
+    return muted_until == -1 or muted_until > now_ms
 
 
 class AccountDataWorkerStore(PushRulesWorkerStore, CacheInvalidationWorkerStore):
@@ -112,6 +133,11 @@ class AccountDataWorkerStore(PushRulesWorkerStore, CacheInvalidationWorkerStore)
         self.db_pool.updates.register_background_update_handler(
             "delete_account_data_for_deactivated_users",
             self._delete_account_data_for_deactivated_users,
+        )
+
+        self.db_pool.updates.register_background_update_handler(
+            BEEPER_MUTE_BACKFILL_UPDATE,
+            self._beeper_mute_account_data_backfill,
         )
 
         self._msc4155_enabled = hs.config.experimental.msc4155_enabled
@@ -661,6 +687,8 @@ class AccountDataWorkerStore(PushRulesWorkerStore, CacheInvalidationWorkerStore)
 
         content_json = json_encoder.encode(content)
 
+        is_mute = account_data_type == AccountDataTypes.BEEPER_MUTE
+
         def _add_account_data_to_room_txn(
             txn: LoggingTransaction, next_id: int
         ) -> None:
@@ -675,20 +703,25 @@ class AccountDataWorkerStore(PushRulesWorkerStore, CacheInvalidationWorkerStore)
                 values={"stream_id": next_id, "content": content_json},
                 expected_revision_id=expected_revision_id,
             )
+            if is_mute:
+                self._beeper_sync_push_rule_from_mute_txn(
+                    txn, user_id, room_id, content
+                )
 
-        async with self._account_data_id_gen.get_next() as next_id:
-            await self.db_pool.runInteraction(
-                "add_room_account_data",
-                _add_account_data_to_room_txn,
-                next_id,
-            )
+        async with self._beeper_mute_account_data_lock(user_id, is_mute):
+            async with self._account_data_id_gen.get_next() as next_id:
+                await self.db_pool.runInteraction(
+                    "add_room_account_data",
+                    _add_account_data_to_room_txn,
+                    next_id,
+                )
 
-            self._account_data_stream_cache.entity_has_changed(user_id, next_id)
-            self.get_room_account_data_for_user.invalidate((user_id,))
-            self.get_account_data_for_room.invalidate((user_id, room_id))
-            self.get_account_data_for_room_and_type.prefill(
-                (user_id, room_id, account_data_type), content
-            )
+                self._account_data_stream_cache.entity_has_changed(user_id, next_id)
+                self.get_room_account_data_for_user.invalidate((user_id,))
+                self.get_account_data_for_room.invalidate((user_id, room_id))
+                self.get_account_data_for_room_and_type.prefill(
+                    (user_id, room_id, account_data_type), content
+                )
 
         return self._account_data_id_gen.get_current_token()
 
@@ -707,6 +740,8 @@ class AccountDataWorkerStore(PushRulesWorkerStore, CacheInvalidationWorkerStore)
             data to delete.
         """
         assert self._can_write_to_account_data
+
+        is_mute = account_data_type == AccountDataTypes.BEEPER_MUTE
 
         def _remove_account_data_for_room_txn(
             txn: LoggingTransaction, next_id: int
@@ -736,24 +771,253 @@ class AccountDataWorkerStore(PushRulesWorkerStore, CacheInvalidationWorkerStore)
                 (next_id, user_id, room_id, account_data_type),
             )
             # Return true if any rows were updated.
-            return txn.rowcount != 0
+            row_updated = txn.rowcount != 0
+            if is_mute:
+                self._beeper_sync_push_rule_from_mute_txn(txn, user_id, room_id, {})
+            return row_updated
 
-        async with self._account_data_id_gen.get_next() as next_id:
-            row_updated = await self.db_pool.runInteraction(
-                "remove_account_data_for_room",
-                _remove_account_data_for_room_txn,
-                next_id,
-            )
-
-            if row_updated:
-                self._account_data_stream_cache.entity_has_changed(user_id, next_id)
-                self.get_room_account_data_for_user.invalidate((user_id,))
-                self.get_account_data_for_room.invalidate((user_id, room_id))
-                self.get_account_data_for_room_and_type.prefill(
-                    (user_id, room_id, account_data_type), {}
+        async with self._beeper_mute_account_data_lock(user_id, is_mute):
+            async with self._account_data_id_gen.get_next() as next_id:
+                row_updated = await self.db_pool.runInteraction(
+                    "remove_account_data_for_room",
+                    _remove_account_data_for_room_txn,
+                    next_id,
                 )
 
+                if row_updated:
+                    self._account_data_stream_cache.entity_has_changed(user_id, next_id)
+                    self.get_room_account_data_for_user.invalidate((user_id,))
+                    self.get_account_data_for_room.invalidate((user_id, room_id))
+                    self.get_account_data_for_room_and_type.prefill(
+                        (user_id, room_id, account_data_type), {}
+                    )
+
         return self._account_data_id_gen.get_current_token()
+
+    def _beeper_mute_account_data_lock(
+        self, user_id: str, is_mute: bool
+    ) -> contextlib.AbstractAsyncContextManager[None]:
+        if is_mute:
+            return self._beeper_mute_linearizer.queue(user_id)
+        return contextlib.nullcontext()
+
+    def _beeper_is_hosted_room_txn(self, txn: LoggingTransaction, room_id: str) -> bool:
+        return (
+            self.db_pool.simple_select_one_onecol_txn(
+                txn, "rooms", {"room_id": room_id}, "room_id", allow_none=True
+            )
+            is not None
+        )
+
+    def _beeper_get_mute_content_txn(
+        self, txn: LoggingTransaction, user_id: str, room_id: str
+    ) -> JsonDict | None:
+        content_json = self.db_pool.simple_select_one_onecol_txn(
+            txn,
+            "room_account_data",
+            {
+                "user_id": user_id,
+                "room_id": room_id,
+                "account_data_type": AccountDataTypes.BEEPER_MUTE,
+            },
+            "content",
+            allow_none=True,
+        )
+        if content_json is None:
+            return None
+        content = db_to_json(content_json)
+        return content if isinstance(content, dict) else {}
+
+    def _beeper_write_mute_txn(
+        self, txn: LoggingTransaction, user_id: str, room_id: str, muted_until: int
+    ) -> None:
+        account_data_type = AccountDataTypes.BEEPER_MUTE
+        stream_id = self._account_data_id_gen.get_next_txn(txn)
+        content = {"muted_until": muted_until}
+        self.db_pool.simple_upsert_txn(
+            txn,
+            "room_account_data",
+            keyvalues={
+                "user_id": user_id,
+                "room_id": room_id,
+                "account_data_type": account_data_type,
+            },
+            values={"stream_id": stream_id, "content": json_encoder.encode(content)},
+        )
+        txn.call_after(
+            self._account_data_stream_cache.entity_has_changed, user_id, stream_id
+        )
+        txn.call_after(self.get_room_account_data_for_user.invalidate, (user_id,))
+        txn.call_after(self.get_account_data_for_room.invalidate, (user_id, room_id))
+        txn.call_after(
+            self.get_account_data_for_room_and_type.invalidate,
+            (user_id, room_id, account_data_type),
+        )
+        txn.call_after(
+            self._beeper_notify, StreamKeyType.ACCOUNT_DATA, stream_id, user_id
+        )
+
+    def _beeper_schedule_mute_expiry_txn(
+        self, txn: LoggingTransaction, user_id: str, room_id: str, muted_until: int
+    ) -> None:
+        resource_id = json_encoder.encode([user_id, room_id])
+        existing = self.db_pool.simple_select_one_onecol_txn(
+            txn,
+            "scheduled_tasks",
+            {
+                "action": BEEPER_MUTE_EXPIRY_ACTION,
+                "resource_id": resource_id,
+                "status": TaskStatus.SCHEDULED,
+                "timestamp": muted_until,
+            },
+            "id",
+            allow_none=True,
+        )
+        if existing is not None:
+            return
+
+        self.db_pool.simple_insert_txn(
+            txn,
+            "scheduled_tasks",
+            {
+                "id": random_string(16),
+                "action": BEEPER_MUTE_EXPIRY_ACTION,
+                "status": TaskStatus.SCHEDULED,
+                "timestamp": muted_until,
+                "resource_id": resource_id,
+                "params": json_encoder.encode({"user_id": user_id, "room_id": room_id}),
+                "result": None,
+                "error": None,
+            },
+        )
+
+    def _beeper_sync_push_rule_from_mute_txn(
+        self,
+        txn: LoggingTransaction,
+        user_id: str,
+        room_id: str,
+        content: JsonMapping,
+    ) -> None:
+        if not self._beeper_is_hosted_room_txn(txn, room_id):
+            return
+
+        muted_until = _beeper_muted_until(content)
+        rule_muted = self._beeper_get_room_rule_muted_txn(
+            txn, user_id, BEEPER_ROOM_RULE_PREFIX + room_id
+        )
+
+        if _beeper_is_muted(muted_until, self.clock.time_msec()):
+            if not rule_muted:
+                self._beeper_mute_room_rule_txn(txn, user_id, room_id)
+            if muted_until > 0:
+                self._beeper_schedule_mute_expiry_txn(
+                    txn, user_id, room_id, muted_until
+                )
+        elif rule_muted:
+            self._beeper_delete_room_rule_txn(txn, user_id, room_id)
+
+    def _beeper_sync_mute_from_push_rule_txn(
+        self, txn: LoggingTransaction, user_id: str, rule_id: str
+    ) -> None:
+        if not rule_id.startswith(BEEPER_ROOM_RULE_PREFIX):
+            return
+
+        room_id = rule_id[len(BEEPER_ROOM_RULE_PREFIX) :]
+        if not self._beeper_is_hosted_room_txn(txn, room_id):
+            return
+
+        rule_muted = bool(self._beeper_get_room_rule_muted_txn(txn, user_id, rule_id))
+        content = self._beeper_get_mute_content_txn(txn, user_id, room_id)
+        muted = _beeper_is_muted(_beeper_muted_until(content), self.clock.time_msec())
+
+        if rule_muted and not muted:
+            self._beeper_write_mute_txn(txn, user_id, room_id, -1)
+        elif not rule_muted and muted:
+            self._beeper_write_mute_txn(txn, user_id, room_id, 0)
+
+    async def beeper_expire_mute(self, user_id: str, room_id: str) -> None:
+        assert self._can_write_to_account_data
+
+        def _beeper_expire_mute_txn(txn: LoggingTransaction) -> None:
+            content = self._beeper_get_mute_content_txn(txn, user_id, room_id)
+            muted_until = _beeper_muted_until(content)
+            if muted_until <= 0 or muted_until > self.clock.time_msec():
+                return
+            if not self._beeper_is_hosted_room_txn(txn, room_id):
+                return
+            if self._beeper_get_room_rule_muted_txn(
+                txn, user_id, BEEPER_ROOM_RULE_PREFIX + room_id
+            ):
+                self._beeper_delete_room_rule_txn(txn, user_id, room_id)
+
+        async with self._beeper_mute_linearizer.queue(user_id):
+            await self.db_pool.runInteraction(
+                "beeper_expire_mute", _beeper_expire_mute_txn
+            )
+
+    async def beeper_backfill_mutes(self, candidates: list[tuple[str, str]]) -> int:
+        assert self._can_write_to_account_data
+
+        def _beeper_backfill_mutes_txn(txn: LoggingTransaction) -> int:
+            written = 0
+            for user_id, room_id in candidates:
+                if not self._beeper_is_hosted_room_txn(txn, room_id):
+                    continue
+                if not self._beeper_get_room_rule_muted_txn(
+                    txn, user_id, BEEPER_ROOM_RULE_PREFIX + room_id, for_update=True
+                ):
+                    continue
+                if self._beeper_get_mute_content_txn(txn, user_id, room_id):
+                    continue
+                self._beeper_write_mute_txn(txn, user_id, room_id, -1)
+                written += 1
+            return written
+
+        return await self.db_pool.runInteraction(
+            "beeper_backfill_mutes", _beeper_backfill_mutes_txn
+        )
+
+    async def _beeper_mute_account_data_backfill(
+        self, progress: JsonDict, batch_size: int
+    ) -> int:
+        last_id = progress.get("last_id", 0)
+
+        def _get_push_rules_batch_txn(
+            txn: LoggingTransaction,
+        ) -> list[tuple[int, str, str, str]]:
+            txn.execute(
+                """
+                SELECT id, user_name, rule_id, actions FROM push_rules
+                WHERE id > ?
+                ORDER BY id ASC
+                LIMIT ?
+                """,
+                (last_id, batch_size),
+            )
+            return cast(list[tuple[int, str, str, str]], txn.fetchall())
+
+        rows = await self.db_pool.runInteraction(
+            "beeper_mute_account_data_backfill", _get_push_rules_batch_txn
+        )
+        if not rows:
+            await self.db_pool.updates._end_background_update(
+                BEEPER_MUTE_BACKFILL_UPDATE
+            )
+            return 0
+
+        candidates = [
+            (user_id, rule_id[len(BEEPER_ROOM_RULE_PREFIX) :])
+            for _, user_id, rule_id, actions in rows
+            if rule_id.startswith(BEEPER_ROOM_RULE_PREFIX)
+            and "notify" not in db_to_json(actions)
+        ]
+        if candidates:
+            await self.hs.get_account_data_handler().backfill_beeper_mutes(candidates)
+
+        await self.db_pool.updates._background_update_progress(
+            BEEPER_MUTE_BACKFILL_UPDATE, {"last_id": rows[-1][0]}
+        )
+        return len(rows)
 
     async def add_account_data_for_user(
         self, user_id: str, account_data_type: str, content: JsonDict,

@@ -362,6 +362,7 @@ class AccountDataTypes:
     # Synapse-specific behaviour. See "Client-Server API Extensions" documentation
     # in Admin API for more information.
     SYNAPSE_ADMIN_CLIENT_CONFIG: Final = "io.element.synapse.admin_client_config"
+    BEEPER_MUTE: Final = "com.beeper.mute"
 
 
 class HistoryVisibility:

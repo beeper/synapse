@@ -421,6 +421,13 @@ class WorkerConfig(Config):
                 "Must only specify one instance to handle `push` messages."
             )
 
+        # Beeper: com.beeper.mute room account data and room push rules are
+        # written together in one transaction, so one instance must own both.
+        if self.writers.account_data != self.writers.push_rules:
+            raise ConfigError(
+                "The same instance must handle `account_data` and `push_rules`."
+            )
+
         if len(self.writers.device_lists) == 0:
             raise ConfigError(
                 "Must specify at least one instance to handle `device_lists` messages."

@@ -28,17 +28,30 @@ from synapse.replication.http.account_data import (
     ReplicationAddRoomAccountDataRestServlet,
     ReplicationAddTagRestServlet,
     ReplicationAddUserAccountDataRestServlet,
+    ReplicationBackfillBeeperMutesRestServlet,
+    ReplicationExpireBeeperMuteRestServlet,
     ReplicationRemoveRoomAccountDataRestServlet,
     ReplicationRemoveTagRestServlet,
     ReplicationRemoveUserAccountDataRestServlet,
 )
+from synapse.storage.databases.main.account_data import BEEPER_MUTE_EXPIRY_ACTION
 from synapse.streams import EventSource
-from synapse.types import JsonDict, JsonMapping, StrCollection, StreamKeyType, UserID
+from synapse.types import (
+    JsonDict,
+    JsonMapping,
+    ScheduledTask,
+    StrCollection,
+    StreamKeyType,
+    TaskStatus,
+    UserID,
+)
 
 if TYPE_CHECKING:
     from synapse.server import HomeServer
 
 logger = logging.getLogger(__name__)
+
+BEEPER_MUTE_EXPIRY_RETRY_MS = 60_000
 
 ON_ACCOUNT_DATA_UPDATED_CALLBACK = Callable[[str, str | None, str, JsonDict], Awaitable]
 
@@ -63,7 +76,19 @@ class AccountDataHandler:
         )
         self._add_tag_client = ReplicationAddTagRestServlet.make_client(hs)
         self._remove_tag_client = ReplicationRemoveTagRestServlet.make_client(hs)
+        self._expire_beeper_mute_client = (
+            ReplicationExpireBeeperMuteRestServlet.make_client(hs)
+        )
+        self._backfill_beeper_mutes_client = (
+            ReplicationBackfillBeeperMutesRestServlet.make_client(hs)
+        )
         self._account_data_writers = hs.config.worker.writers.account_data
+
+        self._clock = hs.get_clock()
+        self._task_scheduler = hs.get_task_scheduler()
+        self._task_scheduler.register_action(
+            self._expire_beeper_mute_task, BEEPER_MUTE_EXPIRY_ACTION
+        )
 
         self._on_account_data_updated_callbacks: list[
             ON_ACCOUNT_DATA_UPDATED_CALLBACK
@@ -257,6 +282,44 @@ class AccountDataHandler:
                 account_data_type=account_data_type,
             )
             return response["max_stream_id"]
+
+    async def expire_beeper_mute(self, user_id: str, room_id: str) -> None:
+        if self._instance_name in self._account_data_writers:
+            await self._store.beeper_expire_mute(user_id, room_id)
+        else:
+            await self._expire_beeper_mute_client(
+                instance_name=random.choice(self._account_data_writers),
+                user_id=user_id,
+                room_id=room_id,
+            )
+
+    async def backfill_beeper_mutes(self, candidates: list[tuple[str, str]]) -> int:
+        if self._instance_name in self._account_data_writers:
+            return await self._store.beeper_backfill_mutes(candidates)
+        response = await self._backfill_beeper_mutes_client(
+            instance_name=random.choice(self._account_data_writers),
+            candidates=candidates,
+        )
+        return response["written"]
+
+    async def _expire_beeper_mute_task(
+        self, task: ScheduledTask
+    ) -> tuple[TaskStatus, JsonMapping | None, str | None]:
+        assert task.params is not None
+        try:
+            await self.expire_beeper_mute(
+                task.params["user_id"], task.params["room_id"]
+            )
+        except Exception as e:
+            logger.exception("Failed to expire com.beeper.mute, rescheduling")
+            await self._task_scheduler.schedule_task(
+                BEEPER_MUTE_EXPIRY_ACTION,
+                resource_id=task.resource_id,
+                timestamp=self._clock.time_msec() + BEEPER_MUTE_EXPIRY_RETRY_MS,
+                params=task.params,
+            )
+            return TaskStatus.FAILED, None, str(e)
+        return TaskStatus.COMPLETE, None, None
 
     async def add_tag_to_room(
         self, user_id: str, room_id: str, tag: str, content: JsonMapping
