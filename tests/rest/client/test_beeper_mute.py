@@ -292,6 +292,24 @@ class BeeperMuteTestCase(unittest.HomeserverTestCase):
         assert rule is not None
         self.assertEqual(rule["actions"], [])
 
+    def test_room_upgrade_keeps_expired_mute_unmuted(self) -> None:
+        content = {"muted_until": self.clock.time_msec() + 1_000}
+        self._put_mute(self.room_id, content)
+        self.reactor.advance(2)
+        self.assertIsNotNone(self._get_rule(self.room_id))
+
+        channel = self.make_request(
+            "POST",
+            f"/_matrix/client/v3/rooms/{self.room_id}/upgrade",
+            {"new_version": "10"},
+            access_token=self.tok,
+        )
+        self.assertEqual(channel.code, 200, channel.result)
+        new_room_id = channel.json_body["replacement_room"]
+
+        self.assertEqual(self._get_mute(new_room_id), content)
+        self.assertIsNone(self._get_rule(new_room_id))
+
     def test_expiry_ignores_replaced_mute(self) -> None:
         self._put_mute(self.room_id, {"muted_until": self.clock.time_msec() + 120_000})
         self._put_mute(self.room_id, {"muted_until": -1})

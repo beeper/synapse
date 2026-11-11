@@ -576,14 +576,6 @@ class RoomMemberHandler(metaclass=abc.ABCMeta):
                 user_id, new_room_id, tag, tag_content
             )
 
-        mute = await self.store.get_account_data_for_room_and_type(
-            user_id, old_room_id, AccountDataTypes.BEEPER_MUTE
-        )
-        if mute:
-            await self.account_data_handler.add_account_data_to_room(
-                user_id, new_room_id, AccountDataTypes.BEEPER_MUTE, dict(mute)
-            )
-
     async def update_membership(
         self,
         requester: Requester,
@@ -1475,6 +1467,15 @@ class RoomMemberHandler(metaclass=abc.ABCMeta):
                         user_id=user_id,
                         old_room_id=old_room_id,
                         new_room_id=new_room_id,
+                    )
+                # Beeper: after the push rules, so the copied mute overrides
+                # the -1 the copied rule writes, keeping timed or expired mutes.
+                mute = await self.store.get_account_data_for_room_and_type(
+                    user_id, old_room_id, AccountDataTypes.BEEPER_MUTE
+                )
+                if mute:
+                    await self.account_data_handler.add_account_data_to_room(
+                        user_id, new_room_id, AccountDataTypes.BEEPER_MUTE, dict(mute)
                     )
             except Exception:
                 logger.exception(
